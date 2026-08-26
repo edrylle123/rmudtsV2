@@ -1,0 +1,461 @@
+/* ============================================================
+   Analytics Dashboard
+   ============================================================ */
+.analytics {
+  background: transparent;
+}
+
+.page-title {
+  font-weight: 700;
+}
+
+/* ---------- Document count chip ---------- */
+.doc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--brand-50);
+  border: 1px solid var(--brand-200);
+  color: var(--brand-700);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ---------- KPI cards ---------- */
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+}
+.stat-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  font-size: 19px;
+  flex-shrink: 0;
+}
+.stat-body .stat-value {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--text);
+}
+.stat-body .stat-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-top: 2px;
+}
+.stat-body .stat-trend {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+/* ---------- Range select + buttons ---------- */
+.range-select {
+  min-width: 160px;
+}
+
+/* ---------- Panels ---------- */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: var(--shadow-sm);
+  height: 100%;
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.panel-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.panel-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.panel-header h5 {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.link-muted {
+  color: var(--text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.link-muted:hover {
+  text-decoration: underline;
+}
+
+/* ---------- Segmented control ---------- */
+.segmented {
+  background: #f1f5f9;
+  border-radius: 10px;
+  padding: 4px;
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.seg-btn {
+  border: none;
+  background: transparent;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: #0f172a;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.seg-btn:hover {
+  background: rgba(37, 99, 235, 0.1);
+}
+.seg-btn.active {
+  background: var(--brand-600);
+  color: #fff;
+}
+
+/* ---------- Office workload bars ---------- */
+.workload-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 16px;
+}
+.workload-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.workload-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.workload-count {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--brand-600);
+  background: var(--brand-50);
+  border: 1px solid var(--brand-200);
+  padding: 2px 9px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.workload-track {
+  height: 8px;
+  background: #eef2f7;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.workload-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #60a5fa, #3b82f6);
+  transition: width 0.3s ease;
+}
+
+/* ---------- Top offices list ---------- */
+.top-item {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.top-item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.top-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.rank {
+  font-weight: 800;
+  font-size: 1.15rem;
+  flex-shrink: 0;
+}
+.rank-1 {
+  color: #16a34a;
+}
+.rank-2 {
+  color: #2563eb;
+}
+.rank-3 {
+  color: #f59e0b;
+}
+
+/* ---------- Alert cards ---------- */
+.alert-card {
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.alert-card:last-child {
+  margin-bottom: 0;
+}
+.alert-red {
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+}
+.alert-yellow {
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+}
+.alert-blue {
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+}
+
+/* ---------- Quick actions ---------- */
+.qa-item {
+  margin-bottom: 8px;
+  border-radius: 10px !important;
+  font-weight: 500;
+}
+.qa-item:last-child {
+  margin-bottom: 0;
+}
+.qa-item:hover {
+  background: var(--brand-50) !important;
+  color: var(--brand-700);
+}
+
+/* ---------- Loading / empty states ---------- */
+.analytics-loading {
+  padding: 60px 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.empty-state {
+  border: 2px dashed var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  padding: 64px 24px;
+  text-align: center;
+}
+.empty-icon {
+  font-size: 2.6rem;
+  color: var(--brand-300);
+  margin-bottom: 14px;
+}
+.empty-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.empty-text {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.empty-inline {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* ---------- Misc ---------- */
+.fw-600 {
+  font-weight: 600;
+}
+
+/* ---------- Print ---------- */
+@media print {
+  .sidebar,
+  .navbar,
+  .btn,
+  .segmented,
+  .range-select,
+  .qa-item,
+  .link-muted,
+  .doc-chip {
+    display: none !important;
+  }
+  .analytics {
+    padding: 0 !important;
+  }
+  .panel,
+  .stat-card {
+    box-shadow: none;
+    break-inside: avoid;
+  }
+}
+
+/* ---------- Tablet ---------- */
+@media (max-width: 1200px) {
+  .segmented {
+    flex-wrap: wrap;
+  }
+  .seg-btn {
+    padding: 4px 8px;
+    font-size: 0.75rem;
+  }
+}
+
+/* ---------- Mobile ---------- */
+@media (max-width: 768px) {
+  .analytics {
+    padding: 12px 8px;
+  }
+  .page-title {
+    font-size: 1.2rem;
+  }
+  .stat-card {
+    flex-direction: row;
+    padding: 14px;
+    gap: 10px;
+  }
+  .stat-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
+    border-radius: 10px;
+  }
+  .stat-body .stat-value {
+    font-size: 20px;
+  }
+  .stat-body .stat-label {
+    font-size: 11px;
+  }
+  .segmented {
+    justify-content: flex-start;
+    width: 100%;
+  }
+  .seg-btn {
+    padding: 4px 8px;
+    font-size: 0.72rem;
+  }
+  .panel {
+    padding: 14px;
+    border-radius: 12px;
+  }
+  .panel-header {
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .panel-header h5 {
+    font-size: 14px;
+  }
+  .range-select {
+    width: 100%;
+  }
+  .doc-chip {
+    font-size: 0.72rem;
+  }
+  .workload-name {
+    font-size: 0.78rem;
+  }
+  .workload-count {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+  }
+  .top-item-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .alert-card {
+    padding: 10px 12px;
+    font-size: 0.85rem;
+  }
+  .qa-item {
+    font-size: 0.85rem;
+    padding: 10px 14px;
+  }
+}
+
+@media (max-width: 576px) {
+  .analytics {
+    padding: 8px 6px;
+  }
+  .page-title {
+    font-size: 1rem;
+  }
+  .stat-card {
+    padding: 12px;
+  }
+  .stat-body .stat-value {
+    font-size: 18px;
+  }
+  .stat-body .stat-label,
+  .stat-body .stat-trend {
+    font-size: 10px;
+  }
+  .panel {
+    padding: 10px;
+    border-radius: 10px;
+  }
+  .panel-header h5 {
+    font-size: 13px;
+  }
+  .panel-icon {
+    width: 26px;
+    height: 26px;
+    font-size: 12px;
+  }
+  .segmented {
+    gap: 2px;
+    padding: 3px;
+  }
+  .seg-btn {
+    padding: 3px 6px;
+    font-size: 0.68rem;
+  }
+  .btn {
+    font-size: 0.82rem;
+    padding: 6px 10px;
+  }
+}

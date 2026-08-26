@@ -1,0 +1,36 @@
+﻿# Summary
+Metric,Value
+Total Records,13
+Avg Processing Time (hrs),17.2
+Approval Rate (%),0
+Pending,13
+Completed (Nearing Disposal),0
+Archived (Overdue),0
+Active Users,6
+
+# Volume by Day
+Bucket,Documents Received
+2025-10-01,4
+2025-09-30,9
+
+# By Classification
+Classification,Count
+Administrative,5
+HR,2
+Financial,4
+Academic,2
+
+# Status Distribution
+Status,Count
+Pending,13
+
+# Office Workload
+Office,Documents
+Legal Office,4
+Office of the Campus Administrator,3
+Office of the Planning Officer,2
+PACD,1
+Office of the Vice President - Admin and Finance,1
+Registrar Office,1
+Quality and Assurance Office,1
+

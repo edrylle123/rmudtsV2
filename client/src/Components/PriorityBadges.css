@@ -1,0 +1,26 @@
+/* client/src/Components/PriorityBadges.css */
+.prio {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+  font-weight: 600;
+  line-height: 1;
+  font-size: 0.75rem;
+  color: #fff;
+}
+
+.prio-high {        /* High = Red */
+  background-color: #e03131; /* strong red */
+}
+
+.prio-normal {      /* Normal = Orange */
+  background-color: #f59f00; /* orange */
+}
+
+.prio-low {         /* Low = Green */
+  background-color: #2f9e44; /* green */
+}
+
+.prio-default {     /* Fallback = Gray */
+  background-color: #6c757d; /* gray */
+}

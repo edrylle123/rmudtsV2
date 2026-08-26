@@ -1,0 +1,401 @@
+/* ============================================================
+   Dashboard — filters, chart, record cards, pagination, modals
+   ============================================================ */
+
+.content-wrapper {
+  flex-grow: 1;
+  min-height: 100vh;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 24px;
+  margin: 20px 0 10px;
+  align-items: start;
+}
+
+.chart-container {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+}
+.chart-container h5 {
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ---------- Filters ---------- */
+.filter-container {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+}
+.filter-icon-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin: 0;
+  white-space: nowrap;
+}
+.filter-icon {
+  font-size: 1rem;
+  color: var(--brand-600);
+}
+.filter-container .form-select,
+.filter-container .form-control,
+.filter-container input[type="date"] {
+  width: auto;
+  min-width: 140px;
+  font-size: 0.85rem;
+  padding: 7px 10px;
+}
+
+.showing {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  padding: 4px 0;
+}
+
+/* ---------- Status badges ---------- */
+.badge-success {
+  background-color: #2f9e44;
+  color: #fff;
+  font-weight: 600;
+}
+.badge-warning {
+  background-color: #f59f00;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ---------- NEW document indicator ---------- */
+.badge-new {
+  background: linear-gradient(135deg, #ff6b35, #f7931e) !important;
+  color: #fff !important;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  animation: pulse-new 2s infinite;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+@keyframes pulse-new {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.record-card-new {
+  border: 2px solid #ff6b35 !important;
+  box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.15), var(--shadow-sm) !important;
+  position: relative;
+}
+
+.record-card-new::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5px;
+  height: 100%;
+  background: linear-gradient(180deg, #ff6b35, #f7931e);
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.record-card-new:hover {
+  box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.25), var(--shadow-md) !important;
+}
+
+/* ---------- Record cards ---------- */
+.record-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 18px;
+  margin: 20px 0 10px;
+}
+
+.record-cards .card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+  cursor: pointer;
+  background: var(--surface);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.9rem;
+}
+.record-cards .card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+}
+
+.record-cards .card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 10px;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+.record-cards .card-header p {
+  margin: 0;
+  font-weight: 700;
+  color: var(--text);
+}
+.record-cards .card-header .badge {
+  align-self: flex-start;
+  font-size: 0.68rem;
+  padding: 0.35em 0.7em;
+  border-radius: 999px;
+  margin-top: 4px;
+}
+
+.record-cards .card-body {
+  flex: 1;
+  padding: 0;
+}
+.record-cards .card-body p {
+  margin: 4px 0;
+  color: var(--text-2);
+}
+.record-cards .card-body strong {
+  color: var(--text);
+}
+
+.record-cards .card-footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0 0;
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  background: transparent;
+}
+.record-cards .card-footer button {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  font-size: 0.95rem;
+}
+.record-cards .card-footer button:disabled {
+  opacity: 0.5;
+}
+
+/* ---------- Pagination ---------- */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 24px 0;
+}
+.pagination button {
+  min-width: 40px;
+  height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  border-radius: 10px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.pagination button:hover:not(:disabled) {
+  border-color: var(--brand-400);
+  color: var(--brand-600);
+}
+.pagination button.active {
+  background: var(--brand-600);
+  border-color: var(--brand-600);
+  color: #fff;
+}
+.pagination button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------- Status / loading ---------- */
+.status {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 28px 0;
+  font-size: 0.95rem;
+}
+
+/* ============================================================
+   Shared modals (Dashboard, All Records, etc.)
+   ============================================================ */
+.modal-backdrop,
+.modal-overlay,
+.qr-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 20, 12, 0.55);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  padding: 16px;
+}
+
+.modal-dialog,
+.modal-content,
+.qr-modal-dialog {
+  background: #fff;
+  padding: 24px;
+  border-radius: var(--radius-md);
+  max-height: 92vh;
+  overflow-y: auto;
+  width: 100%;
+  max-width: 640px;
+  box-shadow: 0 20px 50px rgba(8, 20, 12, 0.3);
+}
+
+.qr-modal-dialog {
+  max-width: 340px;
+  text-align: center;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: #b42318;
+}
+
+.modal-dialog h2,
+.modal-content h2 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin-bottom: 18px;
+  text-align: center;
+}
+
+.modal-dialog .form-group,
+.modal-content .form-group {
+  margin-bottom: 14px;
+}
+.modal-dialog .form-group label,
+.modal-content .form-group label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.modal-dialog .form-group input,
+.modal-dialog .form-group select,
+.modal-dialog .form-group textarea,
+.modal-content .form-group input,
+.modal-content .form-group select,
+.modal-content .form-group textarea {
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 0.92rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.qr-modal-dialog img {
+  width: 200px;
+  height: 200px;
+  border-radius: 10px;
+  margin-bottom: 6px;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 992px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+  .chart-container {
+    margin-top: 8px;
+  }
+}
+
+@media (max-width: 768px) {
+  .content-wrapper {
+    padding: 0;
+  }
+  .filter-container {
+    padding: 12px;
+    gap: 8px;
+    margin: 10px 8px 0;
+  }
+  .filter-container .form-select,
+  .filter-container .form-control,
+  .filter-container input[type="date"] {
+    min-width: 0;
+    flex: 1 1 calc(50% - 6px);
+    font-size: 0.82rem;
+    padding: 6px 8px;
+  }
+  .record-cards {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin: 12px 8px 0;
+  }
+  .record-cards .card {
+    padding: 12px;
+    font-size: 0.85rem;
+  }
+  .record-cards .card-footer {
+    flex-wrap: wrap;
+  }
+  .record-cards .card-footer button {
+    width: 34px;
+    height: 34px;
+  }
+  .pagination {
+    gap: 4px;
+    margin: 16px 8px;
+  }
+  .pagination button {
+    min-width: 32px;
+    height: 34px;
+    padding: 0 8px;
+    font-size: 0.8rem;
+  }
+  .chart-container {
+    margin: 10px 8px 0;
+    padding: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .record-cards {
+    grid-template-columns: 1fr;
+  }
+  .filter-container .form-select,
+  .filter-container .form-control,
+  .filter-container input[type="date"] {
+    min-width: 100%;
+  }
+  .modal-dialog,
+  .modal-content,
+  .qr-modal-dialog {
+    max-width: 100%;
+    padding: 16px;
+    margin: 8px;
+  }
+}

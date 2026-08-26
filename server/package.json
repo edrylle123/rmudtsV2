@@ -1,0 +1,72 @@
+{
+ 
+  "name": "server",
+ 
+  "version": "1.0.0",
+ 
+  "main": "index.js",
+ 
+  "scripts": {
+ 
+   
+  "test": "echo \"Error: no test specified\" && exit 1",
+ 
+   
+  "start": "nodemon server.js"
+ 
+  },
+ 
+  "keywords": [],
+ 
+  "author": "",
+ 
+  "license": "ISC",
+ 
+  "description": "",
+ 
+  "dependencies": {
+ 
+   
+  "@napi-rs/canvas": "^1.0.5",
+ 
+   
+  "bcrypt": "^6.0.0",
+ 
+   
+  "cors": "^2.8.5",
+ 
+   
+  "dotenv": "^17.2.2",
+ 
+   
+  "express": "^5.1.0",
+ 
+   
+  "jsonwebtoken": "^9.0.2",
+ 
+   
+  "multer": "^2.0.2",
+ 
+   
+  "mysql2": "^3.15.3",
+ 
+   
+  "nodemon": "^3.1.10",
+ 
+   
+  "pdf-lib": "^1.17.1",
+ 
+   
+  "pdfjs-dist": "^6.2.108",
+ 
+   
+  "qrcode": "^1.5.4",
+ 
+   
+  "sharp": "^0.34.3",
+ 
+   
+  "socket.io": "^4.8.1"
+ 
+  }
+}

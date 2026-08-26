@@ -1,0 +1,113 @@
+.rsp-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.rsp-slip {
+  border: 2px solid #000;
+  padding: 16px;
+  background: #fff;
+  position: relative;
+}
+
+.rsp-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 2px solid #000;
+  padding-bottom: 10px;
+}
+
+.rsp-logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.rsp-header-text {
+  text-align: center;
+  flex-grow: 1;
+  line-height: 1.25;
+}
+
+.rsp-address {
+  font-size: 0.8rem;
+  color: #444;
+}
+
+.rsp-title {
+  text-align: center;
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: 1px;
+  margin: 10px 0 6px;
+}
+
+.rsp-ctrl {
+  text-align: right;
+  font-size: 0.85rem;
+  margin-bottom: 6px;
+}
+
+.rsp-fields {
+  margin-bottom: 10px;
+}
+
+.rsp-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 14px;
+  margin: 8px 0 12px;
+}
+
+.rsp-action {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.rsp-action input[type="checkbox"] {
+  display: none;
+}
+
+.rsp-action .rsp-marker {
+  font-weight: 700;
+  min-width: 26px;
+}
+
+.rsp-action.checked {
+  background: #eef7f1;
+}
+
+.rsp-action.checked .rsp-marker {
+  color: #0f5c38;
+}
+
+.rsp-comments {
+  resize: vertical;
+  min-height: 64px;
+}
+
+.rsp-footer {
+  margin-top: 8px;
+  font-size: 0.72rem;
+  color: #555;
+}
+
+.rsp-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+@media (max-width: 560px) {
+  .rsp-actions {
+    grid-template-columns: 1fr;
+  }
+}

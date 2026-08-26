@@ -1,0 +1,216 @@
+/* ============================================================
+   Global design system — tokens + base styles
+   ============================================================ */
+:root {
+  /* Brand greens (institutional) */
+  --brand-950: #071d10;
+  --brand-900: #0b2a17;
+  --brand-800: #113a20;
+  --brand-700: #17492a;
+  --brand-600: #28623a;
+  --brand-500: #347a49;
+  --brand-400: #4a9460;
+  --brand-300: #82bd96;
+  --brand-200: #b9d8c4;
+  --brand-100: #e2efe6;
+  --brand-50: #f2f8f4;
+
+  /* Gold accent */
+  --gold-500: #c9971c;
+  --gold-600: #a87c14;
+
+  /* Neutrals */
+  --bg: #f3f6f4;
+  --surface: #ffffff;
+  --border: #e4e9e6;
+  --text: #16211a;
+  --text-2: #4c5b52;
+  --text-muted: #718076;
+
+  /* Shape + shadow */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 3px rgba(16, 34, 22, 0.08);
+  --shadow-md: 0 8px 24px rgba(16, 34, 22, 0.1);
+
+  /* Layout */
+  --sidebar-w: 264px;
+  --sidebar-w-collapsed: 78px;
+  --navbar-h: 72px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Roboto",
+    "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+}
+
+/* Subtle branded scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #c3d0c8;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a5b6ab;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ============================================================
+   Buttons — brand-aware Bootstrap overrides
+   ============================================================ */
+.btn {
+  border-radius: 0.55rem;
+  font-weight: 500;
+  transition: background-color 0.15s ease, border-color 0.15s ease,
+    color 0.15s ease, box-shadow 0.15s ease, transform 0.06s ease;
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn-primary {
+  --bs-btn-bg: var(--brand-600);
+  --bs-btn-border-color: var(--brand-600);
+  --bs-btn-hover-bg: var(--brand-500);
+  --bs-btn-hover-border-color: var(--brand-500);
+  --bs-btn-active-bg: var(--brand-700);
+  --bs-btn-active-border-color: var(--brand-700);
+  --bs-btn-disabled-bg: var(--brand-600);
+  --bs-btn-disabled-border-color: var(--brand-600);
+}
+.btn-outline-primary {
+  --bs-btn-color: var(--brand-600);
+  --bs-btn-border-color: var(--brand-600);
+  --bs-btn-hover-bg: var(--brand-600);
+  --bs-btn-hover-border-color: var(--brand-600);
+  --bs-btn-active-bg: var(--brand-700);
+  --bs-btn-active-border-color: var(--brand-700);
+}
+
+/* ============================================================
+   Forms
+   ============================================================ */
+.form-control,
+.form-select {
+  border-radius: 0.55rem;
+  border-color: var(--border);
+}
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--brand-400);
+  box-shadow: 0 0 0 0.2rem rgba(40, 98, 58, 0.15);
+}
+.form-label {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text);
+}
+
+/* ============================================================
+   Cards (Bootstrap .card used by DocumentTracking & friends)
+   ============================================================ */
+.card {
+  border-color: var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+.card-header {
+  background-color: transparent;
+  border-bottom-color: var(--border);
+}
+.card-header h3,
+.card-header h5 {
+  font-weight: 700;
+}
+
+/* ============================================================
+   Tables
+   ============================================================ */
+.table thead th {
+  background: #eef3ef;
+  color: #33413a;
+  font-weight: 600;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.table tbody tr:hover {
+  background-color: #f6faf7;
+}
+
+/* ============================================================
+   Alerts
+   ============================================================ */
+.alert {
+  border-radius: var(--radius-sm);
+}
+
+/* ============================================================
+   App shell layout — sidebar + main content side by side
+   (kept global so any page using .app-layout works even if
+   AppLayout.css is not imported)
+   ============================================================ */
+.app-layout {
+  display: flex;
+  align-items: stretch;
+}
+
+.main-content {
+  flex: 1 1 0%;
+  min-width: 0;
+  padding: 20px;
+}
+
+/* ============================================================
+   Global responsive overrides
+   ============================================================ */
+@media (max-width: 992px) {
+  .main-content {
+    padding: 16px 12px;
+  }
+}
+
+@media (max-width: 768px) {
+  body {
+    font-size: 14px;
+  }
+  .main-content {
+    padding: 12px 8px;
+  }
+  .d-flex.main-layout {
+    flex-direction: column;
+  }
+}
+
+/* Fix for main layout when sidebar is fixed on mobile */
+.d-flex.main-layout {
+  min-height: 100vh;
+}
+
+@media (max-width: 992px) {
+  .d-flex.main-layout {
+    flex-direction: column;
+  }
+}

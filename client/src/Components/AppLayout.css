@@ -1,0 +1,105 @@
+/* AppLayout.css */
+
+.app-layout {
+  display: flex;
+}
+
+.main-content {
+  flex-grow: 1;
+  padding: 20px;
+}
+
+h2 {
+  font-size: 2rem;
+  font-weight: bold;
+}
+
+.status {
+  text-align: center;
+  font-size: 1.2rem;
+  margin: 20px 0;
+}
+
+.status.error {
+  color: red;
+}
+
+.dashboard-widgets {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.widget {
+  background-color: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  width: 30%;
+  text-align: center;
+}
+
+.widget h3 {
+  font-size: 1.5rem;
+  margin-bottom: 10px;
+}
+
+.widget p {
+  font-size: 1.2rem;
+}
+
+.record-cards {
+  margin-top: 40px;
+}
+
+.cards-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.card {
+  background-color: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+}
+
+.card h3 {
+  font-size: 1.4rem;
+  color: #007bff;
+  margin-bottom: 10px;
+}
+
+.card p {
+  font-size: 1.1rem;
+  color: #555;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .dashboard-widgets {
+    flex-direction: column;
+  }
+
+  .widget {
+    width: 100%;
+  }
+
+  .cards-container {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .cards-container {
+    grid-template-columns: 1fr;
+  }
+}

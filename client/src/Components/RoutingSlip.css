@@ -1,0 +1,104 @@
+/* General Form Styling */
+.form-container {
+  width: 100%;
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 20px;
+  background-color: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.header {
+  text-align: center;
+}
+
+.header h1 {
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+.header .sub-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.header h2 {
+  font-size: 18px;
+  font-weight: bold;
+  margin-top: 20px;
+}
+
+/* Input Field Styling */
+.input-field {
+  margin-bottom: 20px;
+}
+
+.input-field label {
+  font-size: 14px;
+  font-weight: bold;
+  display: block;
+  margin-bottom: 5px;
+}
+
+.input-field input,
+.textarea textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.textarea textarea {
+  height: 100px;
+}
+
+/* Checkbox Styling */
+.checkbox {
+  display: flex;
+  align-items: center;
+}
+
+.checkbox input {
+  margin-right: 10px;
+}
+
+.separator {
+  margin: 30px 0;
+  border-top: 1px dashed #ccc;
+}
+
+/* Button Styling */
+.button-group {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+  margin-top: 30px;
+}
+
+.button-group .btn-approve,
+.button-group .btn-notation {
+  padding: 10px 20px;
+  font-size: 16px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.btn-approve {
+  background-color: #007bff;
+  color: white;
+}
+
+.btn-notation {
+  background-color: #28a745;
+  color: white;
+}
+
+.btn-approve:hover,
+.btn-notation:hover {
+  opacity: 0.8;
+}

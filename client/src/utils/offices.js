@@ -1,0 +1,30 @@
+// client/src/utils/offices.js
+// Single source of truth for office names. Mirrors server STATIC_OFFICES so
+// records routed to an office always match the user's assigned office.
+export const OFFICES = [
+  "Office of the President",
+  "VP Admin and Finance",
+  "VP Academic Research and Extension",
+  "Office of the Campus Administrator",
+  "Office of the University Board Secretary",
+  "Office of the Supervising Administrative Officer",
+  "Office of the Chief Administrative Officer",
+  "Accounting Office",
+  "Cashier",
+  "Supply Office",
+  "Budget Office",
+  "Accounting and Finance Office",
+  "Planning and Development Office",
+  "Quality Assurance Office",
+  "Legal Unit",
+  "CITCS",
+  "Office of the Registrar",
+  "Alumni Office",
+  "Information Technology Office",
+  "General Services Unit",
+  "Project Management Unit",
+  "Information Office",
+  "International Relations Office",
+  "Procurement Office",
+  "Human Resource Management Office",
+];
