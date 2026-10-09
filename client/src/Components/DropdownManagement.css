@@ -1,0 +1,13 @@
+/* ============================================================
+   Dropdown Options Management
+   ============================================================ */
+/* Only the names / offices list scrolls — the category tabs and the
+   "Add" bar above it stay where they are. */
+.dropdown-list-scroll {
+  max-height: calc(100vh - 320px);
+  min-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}

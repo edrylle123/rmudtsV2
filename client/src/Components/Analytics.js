@@ -1,24 +1,31 @@
 // client/src/Components/Analytics.js
-import React, { useEffect, useMemo, useState } from "react";
+//
+// Records Management analytics. Every figure on this page comes from the
+// server's /api/analytics aggregation (SQL over the real columns), so the
+// numbers here always reconcile with the database. The layout separates
+// *snapshot* facts (as of now, every record in scope) from *range* facts
+// (the selected window), because mixing the two is what usually makes a
+// records dashboard lie.
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Sidebar from "./Sidebar";
 import Navbar from "./Navbar";
 import axios from "./axios";
-import { useAuth } from "../AuthContext";
 import {
-  FaArchive,
+  FaArrowDown,
+  FaArrowUp,
   FaBolt,
-  FaBuilding,
   FaChartBar,
-  FaChartLine,
-  FaChartPie,
   FaCheckCircle,
+  FaClipboardCheck,
   FaClock,
+  FaDatabase,
+  FaExchangeAlt,
   FaExclamationTriangle,
-  FaTrophy,
-  FaUsers,
+  FaMinus,
+  FaPaperclip,
+  FaPrint,
+  FaSyncAlt,
 } from "react-icons/fa";
-import "./Analytics.css";
-
 import {
   ResponsiveContainer,
   BarChart,
@@ -31,1017 +38,1068 @@ import {
   PieChart,
   Pie,
   Cell,
+  AreaChart,
+  Area,
 } from "recharts";
+import "./Analytics.css";
 
-const COLORS = {
-  blue: "#3b82f6",
-  green: "#22c55e",
-  orange: "#f59e0b",
-  red: "#ef4444",
-  purple: "#a78bfa",
+const PALETTE = {
+  brand: "#15803d",
+  brandSoft: "#22c55e",
+  blue: "#2563eb",
+  blueSoft: "#60a5fa",
+  teal: "#0d9488",
+  amber: "#d97706",
+  red: "#dc2626",
+  violet: "#7c3aed",
   slate: "#64748b",
 };
 
-const DAY = 86400000;
-
-// Parse retention values like "3 Years", "10", "Permanent" into days.
-const parseRetentionDays = (value) => {
-  const v = String(value || "").toLowerCase().trim();
-  if (!v || v.includes("permanent")) return Infinity;
-  const years = parseInt(v, 10);
-  return Number.isNaN(years) ? 365 : years * 365;
-};
-
-const startOfDay = (d) => {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-};
-
-const weekKey = (d) => {
-  const dt = new Date(d);
-  const onejan = new Date(dt.getFullYear(), 0, 1);
-  const week = Math.ceil(
-    (dt - onejan) / DAY + onejan.getDay() + 1) / 7;
-  return `${dt.getFullYear()}-W${String(week).padStart(2, "0")}`;
-};
-
-const monthKey = (d) => {
-  const dt = new Date(d);
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
-};
-
-const quarterKey = (d) => {
-  const dt = new Date(d);
-  return `${dt.getFullYear()}-Q${Math.floor(dt.getMonth() / 3) + 1}`;
-};
-
-const yearKey = (d) => String(new Date(d).getFullYear());
-
-const computeStatus = (rec) => {
-  const created = rec?.created_at ? new Date(rec.created_at) : null;
-  if (!created) return "Pending";
-  const ageDays = (Date.now() - created.getTime()) / DAY;
-  const retentionDays = parseRetentionDays(rec?.retention_period);
-  if (retentionDays !== Infinity) {
-    const ratio = ageDays / retentionDays;
-    if (ratio >= 1) return "Archived";
-    if (ratio >= 0.8) return "Completed";
-  }
-  const pr = String(rec?.priority || "").toLowerCase();
-  if (pr === "low") return "Approved";
-  return "Pending";
-};
-
-// ---------------- CSV helpers ----------------
-const csvEscape = (val) => {
-  const s = val == null ? "" : String(val);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
-
-const makeCsv = (sections) => {
-  let out = "";
-  for (const sec of sections) {
-    out += `# ${sec.title}\n`;
-    if (sec.headers?.length) out += sec.headers.map(csvEscape).join(",") + "\n";
-    if (sec.rows?.length)
-      for (const row of sec.rows) out += row.map(csvEscape).join(",") + "\n";
-    out += "\n";
-  }
-  return out;
-};
-
-const downloadCsv = (csv, filename) => {
-  const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-};
-
-// ---------------- Constants ----------------
-const RANGE_OPTIONS = [
-  { label: "Last 7 Days", days: 7 },
-  { label: "Last 30 Days", days: 30 },
-  { label: "Last 90 Days", days: 90 },
-  { label: "Year to Date", days: "ytd" },
-  { label: "All Time", days: 0 },
+const RANGES = [
+  { key: "7", label: "7 days" },
+  { key: "30", label: "30 days" },
+  { key: "90", label: "90 days" },
+  { key: "ytd", label: "Year to date" },
+  { key: "all", label: "All time" },
 ];
 
-const SERIES_MODES = ["Daily", "Weekly", "Monthly", "Quarterly", "Yearly"];
+const GRANULARITIES = [
+  { key: "auto", label: "Auto" },
+  { key: "day", label: "Day" },
+  { key: "week", label: "Week" },
+  { key: "month", label: "Month" },
+];
 
-const ordinal = (n) => {
-  const s = ["th", "st", "nd", "rd"];
-  const v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+const pad = (n) => String(n).padStart(2, "0");
+const dateKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+// Resolve a range preset into inclusive from/to date keys.
+const rangeBounds = (key) => {
+  const today = new Date();
+  const to = dateKey(today);
+  if (key === "ytd") return { from: `${today.getFullYear()}-01-01`, to };
+  // "All time" asks the server for the whole archive (first record → today)
+  // instead of inventing a start year.
+  if (key === "all") return { from: "earliest", to };
+  const days = Number(key) || 30;
+  const start = new Date(today);
+  start.setDate(start.getDate() - (days - 1));
+  return { from: dateKey(start), to };
 };
 
-// Shared panel with an icon chip in the header.
-function Panel({ icon, iconBg, iconColor, title, action, children }) {
+const fmtInt = (n) => Number(n || 0).toLocaleString();
+const fmtPct = (n) => `${Number(n || 0)}%`;
+const fmtDate = (v) =>
+  v
+    ? new Date(v).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+    : "—";
+const fmtBytes = (bytes) => {
+  const b = Number(bytes || 0);
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${Math.round(b / 1024)} KB`;
+  if (b < 1024 * 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(b / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+};
+const fmtDays = (n) => {
+  const d = Number(n || 0);
+  if (d < 1) return "same day";
+  if (d < 45) return `${d} day${d === 1 ? "" : "s"}`;
+  const months = Math.round(d / 30.44);
+  if (months < 18) return `${months} month${months === 1 ? "" : "s"}`;
+  return `${(d / 365.25).toFixed(1)} years`;
+};
+
+// Turn a bucket key from the API into a readable label.
+const bucketLabel = (key, granularity) => {
+  if (!key) return "—";
+  if (granularity === "month") {
+    const [y, m] = String(key).split("-").map(Number);
+    if (!y || !m) return String(key);
+    return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: "short", year: "numeric" });
+  }
+  const [y, m, d] = String(key).split("-").map(Number);
+  if (!y) return String(key);
+  const dt = new Date(y, (m || 1) - 1, d || 1);
+  if (granularity === "week") {
+    return `Week of ${dt.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+  }
+  return dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+};
+
+const PRIORITY_TONE = {
+  Immediate: PALETTE.red,
+  Urgent: PALETTE.amber,
+  Normal: PALETTE.blue,
+};
+const AGING_TONE = [PALETTE.brandSoft, PALETTE.blueSoft, PALETTE.amber, PALETTE.red];
+
+// ---------------------------------------------------------------- components
+
+function DeltaChip({ value, suffix = "vs previous period" }) {
+  if (value === null || value === undefined) {
+    return <span className="an-chip an-chip-muted"><FaMinus /> no prior data</span>;
+  }
+  const up = Number(value) > 0;
+  const flat = Number(value) === 0;
   return (
-    <div className="panel">
-      <div className="panel-header">
-        <div className="panel-heading">
-          {icon && (
-            <span
-              className="panel-icon"
-              style={{ background: iconBg, color: iconColor }}
-            >
-              {icon}
-            </span>
-          )}
-          <h5 className="mb-0">{title}</h5>
-        </div>
-        {action}
+    <span
+      className={`an-chip ${flat ? "an-chip-muted" : up ? "an-chip-up" : "an-chip-down"}`}
+      title={`${value}% ${suffix}`}
+    >
+      {flat ? <FaMinus /> : up ? <FaArrowUp /> : <FaArrowDown />} {Math.abs(value)}%
+      <span className="an-chip-note">{suffix}</span>
+    </span>
+  );
+}
+
+function Tile({ icon, label, value, unit, caption, tone = PALETTE.brand, children, wide }) {
+  return (
+    <div className={`an-tile${wide ? " an-tile-wide" : ""}`}>
+      <div className="an-tile-top">
+        <span className="an-tile-icon" style={{ color: tone, background: `${tone}14` }}>
+          {icon}
+        </span>
+        <span className="an-tile-label">{label}</span>
       </div>
-      <div className="panel-body">{children}</div>
+      <div className="an-tile-value" style={{ color: tone }}>
+        {value}
+        {unit ? <span className="an-tile-unit">{unit}</span> : null}
+      </div>
+      {caption ? <div className="an-tile-caption">{caption}</div> : null}
+      {children}
     </div>
   );
 }
 
+function BarRow({ name, value, pct, max, tone = PALETTE.blue, meta, title }) {
+  const width = max > 0 ? Math.max(3, (value / max) * 100) : 0;
+  return (
+    <li className="an-bar-row" title={title || name}>
+      <div className="an-bar-head">
+        <span className="an-bar-name">{name}</span>
+        <span className="an-bar-value">
+          {fmtInt(value)}
+          {pct !== undefined ? <em>{fmtPct(pct)}</em> : null}
+          {meta ? <em className="an-bar-meta">{meta}</em> : null}
+        </span>
+      </div>
+      <div className="an-bar-track">
+        <div className="an-bar-fill" style={{ width: `${width}%`, background: tone }} />
+      </div>
+    </li>
+  );
+}
+
+function CoverageBar({ item }) {
+  const pct = item.total > 0 ? Math.round((item.ok / item.total) * 1000) / 10 : 0;
+  const tone = item.missing === 0 ? PALETTE.brand : pct >= 80 ? PALETTE.amber : PALETTE.red;
+  return (
+    <li className="an-coverage">
+      <div className="an-coverage-head">
+        <span className="an-coverage-label">{item.label}</span>
+        <span className="an-coverage-value" style={{ color: tone }}>
+          {fmtInt(item.ok)}/{fmtInt(item.total)} <em>{fmtPct(pct)}</em>
+        </span>
+      </div>
+      <div className="an-bar-track">
+        <div className="an-bar-fill" style={{ width: `${Math.max(2, pct)}%`, background: tone }} />
+      </div>
+      {item.note ? <div className="an-coverage-note">{item.note}</div> : null}
+    </li>
+  );
+}
+
+function ChartTooltip({ active, payload, label, granularity, labelPrefix }) {
+  if (!active || !payload || !payload.length) return null;
+  const total = payload.reduce((a, p) => a + Number(p.value || 0), 0);
+  return (
+    <div className="an-tooltip">
+      <div className="an-tooltip-title">
+        {labelPrefix ? `${labelPrefix} ` : ""}
+        {granularity ? bucketLabel(label, granularity) : label}
+      </div>
+      {payload.map((p) => (
+        <div key={p.dataKey} className="an-tooltip-row">
+          <span className="an-dot" style={{ background: p.color || p.fill }} />
+          <span className="an-tooltip-name">{p.name}</span>
+          <strong>{fmtInt(p.value)}</strong>
+        </div>
+      ))}
+      {payload.length > 1 ? (
+        <div className="an-tooltip-total">
+          <span>Total</span>
+          <strong>{fmtInt(total)}</strong>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const Empty = ({ children }) => <div className="an-empty-row">{children}</div>;
+
+// ------------------------------------------------------------------- page
+
 export default function Analytics() {
-  const { user } = useAuth();
-  const role = user?.role || "user";
-
-  const [records, setRecords] = useState([]);
-  const [usersCount, setUsersCount] = useState(null);
+  const [range, setRange] = useState("30");
+  const [granularity, setGranularity] = useState("auto");
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [rangeLabel, setRangeLabel] = useState("Last 30 Days");
-  const [seriesMode, setSeriesMode] = useState("Daily");
+  const [error, setError] = useState("");
+  const [refreshedAt, setRefreshedAt] = useState(null);
 
-  // Resolve the selected range into a number of days (0 = all time).
-  const rangeDays = useMemo(() => {
-    const opt =
-      RANGE_OPTIONS.find((o) => o.label === rangeLabel) || RANGE_OPTIONS[1];
-    if (opt.days === "ytd") {
-      const now = new Date();
-      const start = new Date(now.getFullYear(), 0, 1);
-      return Math.max(1, Math.round((now - start) / DAY));
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const { from, to } = rangeBounds(range);
+      const res = await axios.get(
+        `/api/analytics?from=${from}&to=${to}&granularity=${granularity}`
+      );
+      setData(res.data);
+      setRefreshedAt(new Date());
+    } catch (e) {
+      console.error("Analytics load failed:", e?.response?.data || e.message);
+      setError(
+        e?.response?.data?.error ||
+          e?.response?.data?.detail ||
+          e?.message ||
+          "Failed to load analytics"
+      );
+    } finally {
+      setLoading(false);
     }
-    return opt.days;
-  }, [rangeLabel]);
+  }, [range, granularity]);
 
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        setLoading(true);
-        const recRes = await axios.get("/records/my-office");
-        if (!cancelled)
-          setRecords(Array.isArray(recRes.data) ? recRes.data : []);
-        if (role === "admin") {
-          try {
-            const u = await axios.get("/users");
-            if (!cancelled)
-              setUsersCount(Array.isArray(u.data) ? u.data.length : null);
-          } catch {
-            if (!cancelled) setUsersCount(null);
-          }
-        } else setUsersCount(null);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
     load();
-    return () => {
-      cancelled = true;
-    };
-  }, [role]);
+  }, [load]);
 
-  // Normalized records, filtered by the selected time range.
-  const rec = useMemo(() => {
-    const cutoff = rangeDays > 0 ? Date.now() - rangeDays * DAY : 0;
-    return records
-      .filter((r) => {
-        if (!r?.created_at) return false;
-        const t = new Date(r.created_at).getTime();
-        if (Number.isNaN(t)) return false;
-        return cutoff === 0 || t >= cutoff;
-      })
-      .map((r) => {
-        const created = r.created_at ? new Date(r.created_at) : null;
-        const hoursOld = created
-          ? Math.max(0, (Date.now() - created.getTime()) / 36e5)
-          : 0;
-        return {
-          id: r?.id ?? r?.record_id ?? r?.control_number,
-          control_number: r?.control_number || "",
-          title: r?.title || r?.description || "",
-          created_at: r?.created_at,
-          classification: r?.classification || "Others",
-          priority: r?.priority || "Normal",
-          destination_office: r?.destination_office || "—",
-          retention_period: r?.retention_period || "1 Year",
-          status: computeStatus(r),
-          hoursOld,
-        };
-      });
-  }, [records, rangeDays]);
-
-  const avgProcessingTimeHrs = useMemo(() => {
-    if (rec.length === 0) return 0;
-    const sum = rec.reduce((a, b) => a + b.hoursOld, 0);
-    return Math.round((sum / rec.length) * 10) / 10;
-  }, [rec]);
-
-  const statusCounts = useMemo(() => {
-    const m = { Pending: 0, Approved: 0, Completed: 0, Archived: 0 };
-    for (const r of rec) m[r.status] = (m[r.status] || 0) + 1;
-    return m;
-  }, [rec]);
-
-  const totalForRate = Object.values(statusCounts).reduce((a, b) => a + b, 0);
-  const approvalRate =
-    totalForRate > 0
-      ? Math.round(((statusCounts.Approved || 0) / totalForRate) * 1000) / 10
-      : 0;
-  const backlogItems = statusCounts.Pending || 0;
-
-  // Documents received this week (for the alerts panel).
-  const receivedThisWeek = useMemo(() => {
-    const weekAgo = Date.now() - 7 * DAY;
-    return rec.filter((r) => {
-      const t = r.created_at ? new Date(r.created_at).getTime() : 0;
-      return t >= weekAgo;
-    }).length;
-  }, [rec]);
-
-  // ------- Volume trends -------
-  const volumeData = useMemo(() => {
-    const map = new Map();
-    const add = (key) => map.set(key, (map.get(key) || 0) + 1);
-
-    const keyFn =
-      seriesMode === "Weekly"
-        ? weekKey
-        : seriesMode === "Monthly"
-          ? monthKey
-          : seriesMode === "Quarterly"
-            ? quarterKey
-            : seriesMode === "Yearly"
-              ? yearKey
-              : (d) => startOfDay(d).toISOString().slice(0, 10);
-
-    for (const r of rec) {
-      if (!r.created_at) continue;
-      add(keyFn(r.created_at));
-    }
-
-    const toDateForSort = (bucket) => {
-      if (bucket.includes("-W")) {
-        const [y, w] = bucket.split("-W");
-        return new Date(Number(y), 0, 1 + (Number(w) - 1) * 7).getTime();
-      }
-      if (bucket.includes("-Q")) {
-        const [y, q] = bucket.split("-Q");
-        return new Date(Number(y), (Number(q) - 1) * 3, 1).getTime();
-      }
-      if (/^\d{4}-\d{2}$/.test(bucket)) return new Date(bucket + "-01").getTime();
-      if (/^\d{4}$/.test(bucket)) return new Date(bucket + "-01-01").getTime();
-      return new Date(bucket).getTime();
-    };
-
-    return Array.from(map.entries())
-      .sort((a, b) => toDateForSort(a[0]) - toDateForSort(b[0]))
-      .map(([bucket, received]) => ({ bucket, received }));
-  }, [rec, seriesMode]);
-
-  // ---- Office workload (ranked bar list, top 6) ----
-  const officeWorkload = useMemo(() => {
-    const byOffice = new Map();
-    for (const r of rec) {
-      const key = r.destination_office || "—";
-      byOffice.set(key, (byOffice.get(key) || 0) + 1);
-    }
-    return Array.from(byOffice.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 6)
-      .map(([name, count]) => ({ name, count }));
-  }, [rec]);
-
-  const workloadMax = officeWorkload.length ? officeWorkload[0].count : 1;
-
-  // ---- Avg processing (hours) by classification ----
-  const proc = useMemo(() => {
-    const sum = new Map();
-    for (const r of rec) {
-      const k = r.classification || "Others";
-      const val = sum.get(k) || [0, 0];
-      val[0] += r.hoursOld;
-      val[1] += 1;
-      sum.set(k, val);
-    }
-    const cls = ["Academic", "Administrative", "Financial", "HR", "Others"];
-    return cls
-      .map((name) => {
-        const v = sum.get(name) || [0, 0];
-        const hours = v[1] ? v[0] / v[1] : 0;
-        return { name, hours: Math.round(hours * 10) / 10 };
-      })
-      .filter((x) => x.hours > 0);
-  }, [rec]);
-
-  const pieData = useMemo(
-    () => [
-      { name: "Pending", value: statusCounts.Pending || 0, color: COLORS.orange },
-      { name: "Approved", value: statusCounts.Approved || 0, color: COLORS.green },
-      { name: "Completed", value: statusCounts.Completed || 0, color: COLORS.blue },
-      { name: "Archived", value: statusCounts.Archived || 0, color: COLORS.slate },
-    ],
-    [statusCounts]
-  );
-
-  // ---- Retention aging buckets ----
-  const retention = useMemo(() => {
-    const buckets = [
-      { age: "0-6 months", min: 0, max: 182 },
-      { age: "6-12 months", min: 182, max: 365 },
-      { age: "1-2 years", min: 365, max: 730 },
-      { age: "2+ years", min: 730, max: Infinity },
+  const derived = useMemo(() => {
+    if (!data) return null;
+    const s = data.snapshot || {};
+    const w = data.window || {};
+    const maxOffice = Math.max(1, ...(data.byCurrentOffice || []).map((o) => o.value));
+    const maxDest = Math.max(1, ...(data.byDestinationOffice || []).map((o) => o.value));
+    const maxPriority = Math.max(1, ...(data.byPriority || []).map((o) => o.value));
+    const maxClass = Math.max(1, ...(data.byClassification || []).map((o) => o.value));
+    const maxAging = Math.max(1, ...(data.aging || []).map((o) => o.value));
+    const busiest = (data.volume || []).reduce(
+      (best, b) => (b.total > (best?.total || 0) ? b : best),
+      null
+    );
+    const originTotal = (w.internal || 0) + (w.external || 0);
+    const originPie = [
+      { name: "Internal", value: w.internal || 0, color: PALETTE.brand },
+      { name: "External", value: w.external || 0, color: PALETTE.violet },
     ];
-    const res = buckets.map((b) => ({
-      age: b.age,
-      within: 0,
-      near: 0,
-      overdue: 0,
-    }));
-
-    for (const r of rec) {
-      const created = r.created_at ? new Date(r.created_at) : null;
-      if (!created) continue;
-      const ageDays = (Date.now() - created.getTime()) / DAY;
-      const retentionDays = parseRetentionDays(r.retention_period);
-      const ratio = retentionDays === Infinity ? 0 : ageDays / retentionDays;
-
-      let idx = buckets.length - 1;
-      for (let i = 0; i < buckets.length; i++) {
-        if (ageDays >= buckets[i].min && ageDays < buckets[i].max) {
-          idx = i;
-          break;
-        }
-      }
-      const row = res[idx];
-
-      if (retentionDays !== Infinity) {
-        if (ratio >= 1) row.overdue += 1;
-        else if (ratio >= 0.8) row.near += 1;
-        else row.within += 1;
-      } else row.within += 1;
-    }
-    return res;
-  }, [rec]);
-
-  // ---- Top performing offices (completion rate) ----
-  const topOffices = useMemo(() => {
-    const byOffice = new Map();
-    for (const r of rec) {
-      const key = r.destination_office || "—";
-      const v = byOffice.get(key) || { within: 0, near: 0, overdue: 0, total: 0 };
-      const created = r.created_at ? new Date(r.created_at) : null;
-      const ageDays = created ? (Date.now() - created.getTime()) / DAY : 0;
-      const rd = parseRetentionDays(r.retention_period);
-      const ratio = rd === Infinity ? 0 : ageDays / rd;
-      if (rd !== Infinity) {
-        if (ratio >= 1) v.overdue += 1;
-        else if (ratio >= 0.8) v.near += 1;
-        else v.within += 1;
-      } else v.within += 1;
-      v.total += 1;
-      byOffice.set(key, v);
-    }
-    return Array.from(byOffice.entries())
-      .map(([name, v]) => ({
-        name,
-        completion: v.total
-          ? Math.round(((v.within + v.near) / v.total) * 1000) / 10
-          : 0,
-      }))
-      .sort((a, b) => b.completion - a.completion)
-      .slice(0, 3);
-  }, [rec]);
-
-  // ---------- Quick Action reports ----------
-  const filterByPeriod = (recordsNorm, period) => {
-    const now = new Date();
-    const y = now.getFullYear();
-    if (period === "yearly")
-      return recordsNorm.filter(
-        (r) => r.created_at && new Date(r.created_at).getFullYear() === y
-      );
-    const m = now.getMonth();
-    return recordsNorm.filter((r) => {
-      if (!r.created_at) return false;
-      const d = new Date(r.created_at);
-      return d.getFullYear() === y && d.getMonth() === m;
-    });
-  };
-
-  const buildSummarySection = (rows, usersCountForCard) => {
-    const localStatusCounts = rows.reduce((acc, r) => {
-      acc[r.status] = (acc[r.status] || 0) + 1;
-      return acc;
-    }, {});
-    const total = rows.length || 1;
-    const avgHrs = rows.length
-      ? Math.round((rows.reduce((a, b) => a + b.hoursOld, 0) / rows.length) * 10) / 10
-      : 0;
-    const approval = Math.round(((localStatusCounts.Approved || 0) / total) * 1000) / 10;
+    const qrTotal = (s.qrTagged || 0) + (s.awaitingQr || 0);
+    const retentionCoverage =
+      s.total > 0 ? Math.round(((s.retentionTracked || 0) / s.total) * 1000) / 10 : 0;
     return {
-      title: "Summary",
-      headers: ["Metric", "Value"],
-      rows: [
-        ["Total Records", rows.length],
-        ["Avg Processing Time (hrs)", avgHrs],
-        ["Approval Rate (%)", approval],
-        ["Pending", localStatusCounts.Pending || 0],
-        ["Completed (Nearing Disposal)", localStatusCounts.Completed || 0],
-        ["Archived (Overdue)", localStatusCounts.Archived || 0],
-        ["Active Users", usersCountForCard ?? ""],
-      ],
+      s,
+      w,
+      maxOffice,
+      maxDest,
+      maxPriority,
+      maxClass,
+      maxAging,
+      busiest,
+      originTotal,
+      originPie,
+      qrTotal,
+      retentionCoverage,
+      generatedLabel: data.generatedAt ? new Date(data.generatedAt).toLocaleString() : "—",
     };
-  };
+  }, [data]);
 
-  const buildClassificationSection = (rows) => {
-    const map = new Map();
-    for (const r of rows)
-      map.set(r.classification, (map.get(r.classification) || 0) + 1);
-    return {
-      title: "By Classification",
-      headers: ["Classification", "Count"],
-      rows: Array.from(map.entries()),
-    };
-  };
-
-  const buildOfficeWorkloadSection = (rows) => {
-    const map = new Map();
-    for (const r of rows)
-      map.set(r.destination_office, (map.get(r.destination_office) || 0) + 1);
-    return {
-      title: "Office Workload",
-      headers: ["Office", "Documents"],
-      rows: Array.from(map.entries()).sort((a, b) => b[1] - a[1]),
-    };
-  };
-
-  const buildStatusSection = (rows) => {
-    const map = rows.reduce((m, r) => {
-      m[r.status] = (m[r.status] || 0) + 1;
-      return m;
-    }, {});
-    return {
-      title: "Status Distribution",
-      headers: ["Status", "Count"],
-      rows: Object.entries(map),
-    };
-  };
-
-  const buildVolumeSection = (rows, period) => {
-    const map = new Map();
-    if (period === "yearly") {
-      for (const r of rows)
-        map.set(monthKey(r.created_at), (map.get(monthKey(r.created_at)) || 0) + 1);
-      return {
-        title: "Volume by Month",
-        headers: ["Bucket", "Documents Received"],
-        rows: Array.from(map.entries()),
-      };
-    }
-    for (const r of rows)
-      map.set(
-        startOfDay(r.created_at).toISOString().slice(0, 10),
-        (map.get(startOfDay(r.created_at).toISOString().slice(0, 10)) || 0) + 1
-      );
-    return {
-      title: "Volume by Day",
-      headers: ["Bucket", "Documents Received"],
-      rows: Array.from(map.entries()),
-    };
-  };
-
-  const buildRetentionList = (rows) => {
-    const out = [
-      ["Control #", "Title", "Office", "Created At", "Retention", "Status"],
-    ];
-    for (const r of rows)
-      if (r.status === "Completed" || r.status === "Archived")
-        out.push([
-          r.control_number,
-          r.title,
-          r.destination_office,
-          r.created_at,
-          r.retention_period,
-          r.status,
-        ]);
-    return out;
-  };
-
-  const generatePeriodReport = (period) => {
-    const filtered = filterByPeriod(rec, period);
-    const sections = [
-      buildSummarySection(filtered, usersCount),
-      buildVolumeSection(filtered, period),
-      buildClassificationSection(filtered),
-      buildStatusSection(filtered),
-      buildOfficeWorkloadSection(filtered),
-    ];
-    const csv = makeCsv(sections);
-    const stamp = new Date().toISOString().slice(0, 10);
-    downloadCsv(csv, `${period}-report-${stamp}.csv`);
-  };
-
-  const exportAnalyticsCsv = () => {
-    const headers = [
-      "Control #",
-      "Title",
-      "Classification",
-      "Priority",
-      "Office",
-      "Retention",
-      "Status",
-      "Created At",
-    ];
-    const rows = rec.map((r) => [
-      r.control_number,
-      r.title,
-      r.classification,
-      r.priority,
-      r.destination_office,
-      r.retention_period,
-      r.status,
-      r.created_at,
-    ]);
-    const csv = makeCsv([{ title: "All Records (Visible Scope)", headers, rows }]);
-    const stamp = new Date().toISOString().slice(0, 10);
-    downloadCsv(csv, `analytics-data-${stamp}.csv`);
-  };
-
-  const exportRetentionSchedule = () => {
-    const rows = buildRetentionList(rec);
-    const csv = makeCsv([
-      {
-        title: "Retention Schedule (Nearing & Overdue)",
-        headers: rows[0],
-        rows: rows.slice(1),
-      },
-    ]);
-    const stamp = new Date().toISOString().slice(0, 10);
-    downloadCsv(csv, `retention-schedule-${stamp}.csv`);
-  };
-
-  const exportReport = () => window.print();
+  const scopeLabel = data?.scope?.all
+    ? "All offices"
+    : data?.scope?.office
+      ? `Office: ${data.scope.office}`
+      : "—";
+  const granularityUsed = data?.range?.granularity || granularity;
+  const noRangeData = data ? (data.window.total || 0) === 0 : false;
 
   return (
-    <div className="d-flex">
+    <div className="d-flex align-items-stretch">
       <Sidebar />
       <div className="flex-grow-1">
         <Navbar />
-
-        <div className="analytics container-fluid p-3 p-md-4">
-          <div className="d-flex align-items-center justify-content-between mb-3 mb-md-4 flex-wrap gap-2">
-            <div>
-              <h2 className="page-title mb-0">Analytics Dashboard</h2>
-              <div className="text-muted small">
-                Comprehensive document tracking and performance metrics
+        {/* .content-area is the app's scroll container (flex:1 + overflow-y:auto).
+            Without it .flex-grow-1 clips tall pages and nothing can scroll. */}
+        <div className="content-area analytics-content">
+        <div className="analytics">
+          <header className="an-toolbar">
+            <div className="an-toolbar-head">
+              <div>
+                <h1 className="an-title">Records Analytics</h1>
+                <p className="an-subtitle">
+                  Volume, workload and retention readiness across the records system.
+                  Snapshot figures cover every record in scope; range figures cover the
+                  window you pick below.
+                </p>
+              </div>
+              <div className="an-toolbar-actions">
+                <button
+                  type="button"
+                  className="an-btn an-btn-ghost"
+                  onClick={load}
+                  disabled={loading}
+                  title="Reload from the database"
+                >
+                  <FaSyncAlt className={loading ? "an-spin" : ""} /> Refresh
+                </button>
+                <button type="button" className="an-btn an-btn-primary" onClick={() => window.print()}>
+                  <FaPrint /> Print / PDF
+                </button>
               </div>
             </div>
-            <div className="d-flex gap-2 align-items-center flex-wrap">
-              {!loading && (
-                <span className="doc-chip">
-                  {rec.length} document{rec.length === 1 ? "" : "s"} in range
+
+            <div className="an-controls">
+              <div className="an-control-group">
+                <span className="an-control-label">Range</span>
+                <div className="an-seg">
+                  {RANGES.map((r) => (
+                    <button
+                      key={r.key}
+                      type="button"
+                      className={`an-seg-btn${range === r.key ? " is-active" : ""}`}
+                      onClick={() => setRange(r.key)}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="an-control-group">
+                <span className="an-control-label">
+                  Group by{granularity === "auto" ? ` (${granularityUsed})` : ""}
                 </span>
-              )}
-              <select
-                className="form-select range-select"
-                value={rangeLabel}
-                onChange={(e) => setRangeLabel(e.target.value)}
-                aria-label="Time range"
-              >
-                {RANGE_OPTIONS.map((o) => (
-                  <option key={o.label} value={o.label}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              <button className="btn btn-primary" onClick={exportReport}>
-                <span className="me-1">⬇️</span> Export Report
+                <div className="an-seg">
+                  {GRANULARITIES.map((g) => (
+                    <button
+                      key={g.key}
+                      type="button"
+                      className={`an-seg-btn${granularity === g.key ? " is-active" : ""}`}
+                      onClick={() => setGranularity(g.key)}
+                    >
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="an-control-group an-control-group-right">
+                <span className="an-scope-chip" title="Records included in these figures">
+                  <FaDatabase /> {scopeLabel}
+                </span>
+                {data ? (
+                  <span className="an-scope-chip an-scope-muted">
+                    {fmtDate(data.range.from)} – {fmtDate(data.range.to)} ·{" "}
+                    {fmtInt(data.range.days)} days
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </header>
+
+          {error ? (
+            <div className="an-error">
+              <FaExclamationTriangle />
+              <div>
+                <strong>Analytics could not be loaded.</strong>
+                <div className="an-error-detail">{error}</div>
+              </div>
+              <button type="button" className="an-btn an-btn-ghost" onClick={load}>
+                Retry
               </button>
             </div>
-          </div>
+          ) : null}
 
-          {loading ? (
-            <div className="analytics-loading">Loading analytics…</div>
-          ) : rec.length === 0 ? (
-            <div className="empty-state">
-              <FaChartBar className="empty-icon" />
-              <div className="empty-title">No documents in this range</div>
-              <div className="empty-text">
-                Try a wider time range, or create a record first.
-              </div>
+          {!data && loading ? (
+            <div className="an-skeleton-grid">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="an-skeleton" />
+              ))}
             </div>
-          ) : (
+          ) : null}
+
+          {data && derived ? (
             <>
-              {/* KPI Cards */}
-              <div className="row g-3 g-lg-4 mb-3 mb-md-4">
-                <div className="col-12 col-sm-6 col-lg-3">
-                  <div className="stat-card">
-                    <div
-                      className="stat-icon"
-                      style={{
-                        background: "rgba(59,130,246,.12)",
-                        color: COLORS.blue,
-                      }}
-                    >
-                      <FaClock />
-                    </div>
-                    <div className="stat-body">
-                      <div className="stat-value">
-                        {avgProcessingTimeHrs || 0}hrs
-                      </div>
-                      <div className="stat-label">Avg Record Age</div>
-                      <div className="stat-trend">
-                        across {rec.length} document{rec.length === 1 ? "" : "s"}
-                      </div>
-                    </div>
-                  </div>
+              {/* ---------------------------------------------- snapshot */}
+              <section className="an-section">
+                <div className="an-section-head">
+                  <h2>Snapshot — as of now</h2>
+                  <span className="an-section-note">
+                    Every record in scope, ignoring the range filter.
+                  </span>
                 </div>
-                <div className="col-12 col-sm-6 col-lg-3">
-                  <div className="stat-card">
-                    <div
-                      className="stat-icon"
-                      style={{
-                        background: "rgba(34,197,94,.12)",
-                        color: COLORS.green,
-                      }}
-                    >
-                      <FaCheckCircle />
-                    </div>
-                    <div className="stat-body">
-                      <div className="stat-value">{approvalRate.toFixed(1)}%</div>
-                      <div className="stat-label">Approval Rate</div>
-                      <div className="stat-trend">
-                        {statusCounts.Approved || 0} approved in range
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="col-12 col-sm-6 col-lg-3">
-                  <div className="stat-card">
-                    <div
-                      className="stat-icon"
-                      style={{
-                        background: "rgba(245,158,11,.12)",
-                        color: COLORS.orange,
-                      }}
-                    >
-                      <FaChartLine />
-                    </div>
-                    <div className="stat-body">
-                      <div className="stat-value">{backlogItems}</div>
-                      <div className="stat-label">Backlog Items</div>
-                      <div className="stat-trend">awaiting action in range</div>
-                    </div>
-                  </div>
-                </div>
-                <div className="col-12 col-sm-6 col-lg-3">
-                  <div className="stat-card">
-                    <div
-                      className="stat-icon"
-                      style={{
-                        background: "rgba(167,139,250,.12)",
-                        color: COLORS.purple,
-                      }}
-                    >
-                      <FaUsers />
-                    </div>
-                    <div className="stat-body">
-                      <div className="stat-value">{usersCount ?? "—"}</div>
-                      <div className="stat-label">Active Users</div>
-                      <div className="stat-trend">
-                        {role === "admin" ? "registered accounts" : "admin view only"}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Volume + Workload */}
-              <div className="row g-3 g-lg-4 mb-3 mb-md-4">
-                <div className="col-12 col-lg-7">
-                  <Panel
+                <div className="an-tile-grid">
+                  <Tile
                     icon={<FaChartBar />}
-                    iconBg="rgba(59,130,246,.12)"
-                    iconColor={COLORS.blue}
-                    title="Document Volume Trends"
-                    action={
-                      <div className="segmented">
-                        {SERIES_MODES.map((m) => (
-                          <button
-                            key={m}
-                            className={`seg-btn ${seriesMode === m ? "active" : ""}`}
-                            onClick={() => setSeriesMode(m)}
-                            type="button"
-                          >
-                            {m}
-                          </button>
-                        ))}
-                      </div>
-                    }
+                    label="Total records in scope"
+                    value={fmtInt(derived.s.total)}
+                    caption={`${fmtInt(derived.s.internal)} internal · ${fmtInt(
+                      derived.s.external
+                    )} external`}
+                    tone={PALETTE.brand}
                   >
-                    <div style={{ width: "100%", height: 280 }}>
-                      <ResponsiveContainer>
-                        <BarChart
-                          data={volumeData}
-                          margin={{ top: 4, right: 16, left: -8, bottom: 0 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="bucket" />
-                          <YAxis />
-                          <Tooltip />
-                          <Legend />
-                          <Bar
-                            dataKey="received"
-                            name="Documents Received"
-                            fill={COLORS.blue}
-                            radius={[6, 6, 0, 0]}
+                    <div className="an-spark">
+                      <ResponsiveContainer width="100%" height={38}>
+                        <AreaChart data={data.trend12m} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="anSpark" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor={PALETTE.brand} stopOpacity={0.35} />
+                              <stop offset="100%" stopColor={PALETTE.brand} stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <Tooltip content={<ChartTooltip granularity="month" />} />
+                          <Area
+                            type="monotone"
+                            dataKey="total"
+                            name="Added"
+                            stroke={PALETTE.brand}
+                            strokeWidth={2}
+                            fill="url(#anSpark)"
                           />
-                        </BarChart>
+                        </AreaChart>
                       </ResponsiveContainer>
                     </div>
-                  </Panel>
-                </div>
+                  </Tile>
 
-                <div className="col-12 col-lg-5">
-                  <Panel
-                    icon={<FaBuilding />}
-                    iconBg="rgba(34,197,94,.12)"
-                    iconColor={COLORS.green}
-                    title="Office Workload"
-                    action={
-                      <span className="link-muted small">
-                        Top {officeWorkload.length || 0}
-                      </span>
-                    }
+                  <Tile
+                    icon={<FaClipboardCheck />}
+                    label="Awaiting action (no QR)"
+                    value={fmtInt(derived.s.awaitingQr)}
+                    caption={`${
+                      derived.s.total > 0
+                        ? Math.round((derived.s.awaitingQr / derived.s.total) * 100)
+                        : 0
+                    }% of all records`}
+                    tone={PALETTE.amber}
+                  />
+
+                  <Tile
+                    icon={<FaCheckCircle />}
+                    label="QR-tagged & filed"
+                    value={fmtInt(derived.s.qrTagged)}
+                    caption={`${
+                      derived.qrTotal > 0
+                        ? Math.round((derived.s.qrTagged / derived.qrTotal) * 100)
+                        : 0
+                    }% of all records`}
+                    tone={PALETTE.brand}
+                  />
+
+                  <Tile
+                    icon={<FaBolt />}
+                    label="Urgent or immediate"
+                    value={fmtInt(derived.s.highPriority)}
+                    caption={`${fmtInt(derived.s.normalPriority)} normal priority`}
+                    tone={PALETTE.red}
+                  />
+
+                  <Tile
+                    icon={<FaExclamationTriangle />}
+                    label="Past retention period"
+                    value={fmtInt(derived.s.retentionDue)}
+                    caption={`${fmtInt(derived.s.retentionDueSoon)} more within 90 days · retention on file for ${fmtInt(
+                      derived.s.retentionTracked
+                    )} of ${fmtInt(derived.s.total)}`}
+                    tone={PALETTE.red}
+                  />
+
+                  <Tile
+                    icon={<FaPaperclip />}
+                    label="Attachments stored"
+                    value={fmtInt(data.attachments.files)}
+                    caption={`${fmtBytes(data.attachments.bytes)} · on ${fmtInt(
+                      data.attachments.docsWithFiles
+                    )} document(s) · ${data.attachments.avgPerDocument} per record`}
+                    tone={PALETTE.teal}
+                  />
+                </div>
+              </section>
+
+              {/* ------------------------------------------------- range */}
+              <section className="an-section">
+                <div className="an-section-head">
+                  <h2>Selected range</h2>
+                  <span className="an-section-note">
+                    Records created between {fmtDate(data.range.from)} and {fmtDate(data.range.to)}.
+                  </span>
+                </div>
+                <div className="an-tile-grid an-tile-grid-4">
+                  <Tile
+                    icon={<FaChartBar />}
+                    label="Records added"
+                    value={fmtInt(derived.w.total)}
+                    caption={`${derived.w.avgPerDay} per day on average · ${fmtInt(
+                      derived.w.internal
+                    )} internal / ${fmtInt(derived.w.external)} external`}
+                    tone={PALETTE.blue}
                   >
-                    {officeWorkload.length === 0 ? (
-                      <div className="empty-inline">No workload data in this range.</div>
-                    ) : (
-                      <ul className="workload-list">
-                        {officeWorkload.map((o) => (
-                          <li key={o.name} className="workload-item">
-                            <div className="workload-meta">
-                              <span className="workload-name" title={o.name}>
-                                {o.name}
-                              </span>
-                              <span className="workload-count">{o.count}</span>
-                            </div>
-                            <div className="workload-track">
-                              <div
-                                className="workload-fill"
-                                style={{
-                                  width: `${Math.max(
-                                    6,
-                                    (o.count / workloadMax) * 100
-                                  )}%`,
-                                }}
-                              />
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </Panel>
-                </div>
-              </div>
-
-              {/* Processing vs Status */}
-              <div className="row g-3 g-lg-4 mb-3 mb-md-4">
-                <div className="col-12 col-lg-7">
-                  <Panel
+                    <DeltaChip value={derived.w.deltaPct} />
+                  </Tile>
+                  <Tile
                     icon={<FaClock />}
-                    iconBg="rgba(59,130,246,.12)"
-                    iconColor={COLORS.blue}
-                    title="Processing Time Analysis"
-                  >
-                    <div style={{ width: "100%", height: 260 }}>
-                      <ResponsiveContainer>
+                    label="Busiest period"
+                    value={derived.busiest ? fmtInt(derived.busiest.total) : "0"}
+                    caption={
+                      derived.busiest && derived.busiest.total > 0
+                        ? `on ${bucketLabel(derived.busiest.key, granularityUsed)}`
+                        : "no records in range"
+                    }
+                    tone={PALETTE.violet}
+                  />
+                  <Tile
+                    icon={<FaClipboardCheck />}
+                    label="Still awaiting action"
+                    value={fmtInt(derived.w.awaitingQr)}
+                    caption="of the records added in this range"
+                    tone={PALETTE.amber}
+                  />
+                  <Tile
+                    icon={<FaExchangeAlt />}
+                    label="Office handoffs"
+                    value={fmtInt(data.transfers.total)}
+                    caption={`${fmtInt(data.transfers.officeCount)} office(s) involved · received and released`}
+                    tone={PALETTE.teal}
+                  />
+                </div>
+
+                <div className="an-card an-card-chart">
+                  <div className="an-card-head">
+                    <h3>
+                      Intake volume ·{" "}
+                      <span className="an-card-head-accent">
+                        {granularityUsed === "day"
+                          ? "daily"
+                          : granularityUsed === "week"
+                            ? "weekly"
+                            : "monthly"}
+                      </span>
+                    </h3>
+                    <span className="an-card-note">
+                      Empty periods are plotted as zero, so gaps in intake are visible.
+                    </span>
+                  </div>
+                  {noRangeData ? (
+                    <Empty>
+                      No records were created in this range. Snapshot figures above still
+                      cover all {fmtInt(derived.s.total)} records.
+                    </Empty>
+                  ) : (
+                    <div className="an-chart">
+                      <ResponsiveContainer width="100%" height={300}>
                         <BarChart
-                          data={proc}
-                          layout="vertical"
-                          margin={{ top: 4, right: 16, left: 16, bottom: 0 }}
+                          data={data.volume}
+                          margin={{ top: 8, right: 16, left: -8, bottom: 0 }}
+                          barCategoryGap={granularityUsed === "day" ? "10%" : "25%"}
                         >
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis type="number" />
-                          <YAxis dataKey="name" type="category" />
-                          <Tooltip />
-                          <Legend />
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e8edf3" vertical={false} />
+                          <XAxis
+                            dataKey="key"
+                            tick={{ fontSize: 11, fill: PALETTE.slate }}
+                            tickFormatter={(k) => bucketLabel(k, granularityUsed)}
+                            interval={Math.max(0, Math.ceil(data.volume.length / 12) - 1)}
+                            minTickGap={12}
+                          />
+                          <YAxis
+                            tick={{ fontSize: 11, fill: PALETTE.slate }}
+                            allowDecimals={false}
+                            width={44}
+                          />
+                          <Tooltip
+                            content={<ChartTooltip granularity={granularityUsed} />}
+                            cursor={{ fill: "rgba(21,128,61,0.06)" }}
+                          />
+                          <Legend
+                            iconType="circle"
+                            wrapperStyle={{ fontSize: 12, paddingTop: 6 }}
+                            formatter={(v) => <span style={{ color: "#475569" }}>{v}</span>}
+                          />
                           <Bar
-                            dataKey="hours"
-                            name="Avg Processing Time (hours)"
-                            fill={COLORS.blue}
-                            radius={[0, 6, 6, 0]}
+                            dataKey="internal"
+                            name="Internal"
+                            stackId="v"
+                            fill={PALETTE.brand}
+                            radius={[0, 0, 0, 0]}
+                          />
+                          <Bar
+                            dataKey="external"
+                            name="External"
+                            stackId="v"
+                            fill={PALETTE.violet}
+                            radius={[4, 4, 0, 0]}
                           />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
-                  </Panel>
+                  )}
                 </div>
+              </section>
 
-                <div className="col-12 col-lg-5">
-                  <Panel
-                    icon={<FaChartPie />}
-                    iconBg="rgba(167,139,250,.12)"
-                    iconColor={COLORS.purple}
-                    title="Document Status Distribution"
-                  >
-                    <div style={{ width: "100%", height: 260 }}>
-                      <ResponsiveContainer>
-                        <PieChart>
-                          <Pie
-                            data={pieData}
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={85}
-                            dataKey="value"
-                            nameKey="name"
-                            label
-                          >
-                            {pieData.map((e, i) => (
-                              <Cell key={i} fill={e.color} />
-                            ))}
-                          </Pie>
-                          <Legend verticalAlign="bottom" height={24} />
-                          <Tooltip />
-                        </PieChart>
-                      </ResponsiveContainer>
+              {/* ------------------------------------------- composition */}
+              <section className="an-section">
+                <div className="an-section-head">
+                  <h2>Composition of the range</h2>
+                  <span className="an-section-note">
+                    Every breakdown below adds up to the {fmtInt(derived.w.total)} record(s)
+                    added in the selected window.
+                  </span>
+                </div>
+                <div className="an-grid-3">
+                  <div className="an-card">
+                    <div className="an-card-head">
+                      <h3>Origin</h3>
+                      <span className="an-card-note">Internal vs external requests</span>
                     </div>
-                  </Panel>
-                </div>
-              </div>
-
-              {/* Retention */}
-              <div className="mb-3 mb-md-4">
-                <Panel
-                  icon={<FaArchive />}
-                  iconBg="rgba(245,158,11,.12)"
-                  iconColor={COLORS.orange}
-                  title="Document Aging & Retention Analysis"
-                  action={
-                    <a
-                      className="link-muted small"
-                      href="#!"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        exportRetentionSchedule();
-                      }}
-                    >
-                      Schedule Disposal
-                    </a>
-                  }
-                >
-                  <div style={{ width: "100%", height: 280 }}>
-                    <ResponsiveContainer>
-                      <BarChart
-                        data={retention}
-                        margin={{ top: 4, right: 16, left: -8, bottom: 0 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="age" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Bar
-                          dataKey="within"
-                          name="Within Retention"
-                          stackId="a"
-                          fill={COLORS.green}
-                        />
-                        <Bar
-                          dataKey="near"
-                          name="Nearing Disposal"
-                          stackId="a"
-                          fill={COLORS.orange}
-                        />
-                        <Bar
-                          dataKey="overdue"
-                          name="Overdue"
-                          stackId="a"
-                          fill={COLORS.red}
-                        />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    {derived.originTotal === 0 ? (
+                      <Empty>Nothing in range.</Empty>
+                    ) : (
+                      <div className="an-donut-wrap">
+                        <ResponsiveContainer width="48%" height={168}>
+                          <PieChart>
+                            <Pie
+                              data={derived.originPie}
+                              dataKey="value"
+                              nameKey="name"
+                              innerRadius={46}
+                              outerRadius={70}
+                              paddingAngle={2}
+                              stroke="none"
+                            >
+                              {derived.originPie.map((e) => (
+                                <Cell key={e.name} fill={e.color} />
+                              ))}
+                            </Pie>
+                            <Tooltip content={<ChartTooltip />} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                        <ul className="an-legend">
+                          {derived.originPie.map((o) => (
+                            <li key={o.name}>
+                              <span className="an-dot" style={{ background: o.color }} />
+                              <span className="an-legend-name">{o.name}</span>
+                              <strong>{fmtInt(o.value)}</strong>
+                              <em>
+                                {derived.originTotal > 0
+                                  ? fmtPct(Math.round((o.value / derived.originTotal) * 1000) / 10)
+                                  : "0%"}
+                              </em>
+                            </li>
+                          ))}
+                          <li className="an-legend-total">
+                            <span className="an-legend-name">In range</span>
+                            <strong>{fmtInt(derived.originTotal)}</strong>
+                          </li>
+                        </ul>
+                      </div>
+                    )}
                   </div>
-                </Panel>
-              </div>
 
-              {/* Bottom row */}
-              <div className="row g-3 g-lg-4">
-                <div className="col-12 col-lg-4">
-                  <Panel
-                    icon={<FaTrophy />}
-                    iconBg="rgba(201,151,28,.14)"
-                    iconColor="#a16207"
-                    title="Top Performing Offices"
-                  >
-                    <ul className="list-unstyled mb-0">
-                      {topOffices.length === 0 && (
-                        <li className="text-muted small">No data in this range.</li>
+                  <div className="an-card">
+                    <div className="an-card-head">
+                      <h3>Priority</h3>
+                      <span className="an-card-note">As recorded on the record</span>
+                    </div>
+                    <ul className="an-bars">
+                      {data.byPriority.length === 0 ? (
+                        <Empty>Nothing in range.</Empty>
+                      ) : (
+                        data.byPriority.map((p) => (
+                          <BarRow
+                            key={p.name}
+                            name={p.name}
+                            value={p.value}
+                            pct={p.pct}
+                            max={derived.maxPriority}
+                            tone={PRIORITY_TONE[p.name] || PALETTE.slate}
+                          />
+                        ))
                       )}
-                      {topOffices.map((r, i) => (
-                        <li key={r.name} className="top-item">
-                          <div className="top-item-row">
-                            <div>
-                              <div className="fw-600">{r.name}</div>
-                              <div className="text-muted small">
-                                {r.completion}% completion rate
-                              </div>
-                            </div>
-                            <div className={`rank rank-${i + 1}`}>
-                              {ordinal(i + 1)}
-                            </div>
-                          </div>
-                        </li>
+                    </ul>
+                  </div>
+
+                  <div className="an-card">
+                    <div className="an-card-head">
+                      <h3>Age of records in range</h3>
+                      <span className="an-card-note">Days since creation, now</span>
+                    </div>
+                    <ul className="an-bars">
+                      {data.aging.reduce((a, b) => a + b.value, 0) === 0 ? (
+                        <Empty>Nothing in range.</Empty>
+                      ) : (
+                        data.aging.map((b, i) => (
+                          <BarRow
+                            key={b.key}
+                            name={b.label}
+                            value={b.value}
+                            pct={b.pct}
+                            max={derived.maxAging}
+                            tone={AGING_TONE[i % AGING_TONE.length]}
+                          />
+                        ))
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              </section>
+
+              {/* ---------------------------------------------- workload */}
+              <section className="an-section">
+                <div className="an-section-head">
+                  <h2>Where the work sits</h2>
+                  <span className="an-section-note">
+                    Current office = where the document physically is; destination = where it
+                    was sent. Both cover the selected range.
+                  </span>
+                </div>
+                <div className="an-grid-3">
+                  <div className="an-card">
+                    <div className="an-card-head">
+                      <h3>Documents currently held</h3>
+                      <span className="an-card-note">{data.byCurrentOffice.length} office(s)</span>
+                    </div>
+                    <ul className="an-bars">
+                      {data.byCurrentOffice.length === 0 ? (
+                        <Empty>Nothing in range.</Empty>
+                      ) : (
+                        data.byCurrentOffice.map((o) => (
+                          <BarRow
+                            key={o.name}
+                            name={o.name}
+                            value={o.value}
+                            pct={o.pct}
+                            max={derived.maxOffice}
+                            tone={PALETTE.brand}
+                          />
+                        ))
+                      )}
+                    </ul>
+                  </div>
+
+                  <div className="an-card">
+                    <div className="an-card-head">
+                      <h3>Destination offices</h3>
+                      <span className="an-card-note">External documents may have none</span>
+                    </div>
+                    <ul className="an-bars">
+                      {data.byDestinationOffice.length === 0 ? (
+                        <Empty>Nothing in range.</Empty>
+                      ) : (
+                        data.byDestinationOffice.map((o) => (
+                          <BarRow
+                            key={o.name}
+                            name={o.name}
+                            value={o.value}
+                            pct={o.pct}
+                            max={derived.maxDest}
+                            tone={PALETTE.blue}
+                          />
+                        ))
+                      )}
+                    </ul>
+                  </div>
+
+                  <div className="an-card">
+                    <div className="an-card-head">
+                      <h3>Classification</h3>
+                      <span className="an-card-note">
+                        Legacy labels folded into their current equivalent
+                      </span>
+                    </div>
+                    <ul className="an-bars">
+                      {data.byClassification.length === 0 ? (
+                        <Empty>Nothing in range.</Empty>
+                      ) : (
+                        data.byClassification.map((c) => (
+                          <BarRow
+                            key={c.name}
+                            name={c.name}
+                            value={c.value}
+                            pct={c.pct}
+                            max={derived.maxClass}
+                            tone={PALETTE.teal}
+                            meta={
+                              c.sources && c.sources.length > 1
+                                ? `incl. "${c.sources.filter((s) => s !== c.name).join('", "')}"`
+                                : null
+                            }
+                            title={
+                              c.sources && c.sources.length > 1
+                                ? `Includes the stored label(s): ${c.sources.join(", ")}`
+                                : c.name
+                            }
+                          />
+                        ))
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              </section>
+
+              {/* --------------------------------------------- transfer */}
+              <section className="an-section">
+                <div className="an-section-head">
+                  <h2>Handoffs between offices</h2>
+                  <span className="an-section-note">
+                    Derived from tracked movements. One handoff counts once as released and
+                    once as received, so a row's total is roughly twice the number of events.
+                  </span>
+                </div>
+                <div className="an-card an-card-table">
+                  {data.transfers.offices.length === 0 ? (
+                    <Empty>No handoffs recorded in this range.</Empty>
+                  ) : (
+                    <table className="an-table">
+                      <thead>
+                        <tr>
+                          <th>Office</th>
+                          <th className="an-num">Released</th>
+                          <th className="an-num">Received</th>
+                          <th className="an-num">Total touches</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.transfers.offices.map((o) => (
+                          <tr key={o.name}>
+                            <td>{o.name}</td>
+                            <td className="an-num">{fmtInt(o.sent)}</td>
+                            <td className="an-num">{fmtInt(o.received)}</td>
+                            <td className="an-num">
+                              <strong>{fmtInt(o.total)}</strong>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </section>
+
+              {/* ------------------------------------------- watchlists */}
+              <section className="an-section">
+                <div className="an-section-head">
+                  <h2>Action lists</h2>
+                  <span className="an-section-note">
+                    Built from all records in scope, not just the selected range — these are
+                    the ones that need attention.
+                  </span>
+                </div>
+                <div className="an-grid-2">
+                  <div className="an-card an-card-table">
+                    <div className="an-card-head">
+                      <h3>Oldest documents still awaiting action</h3>
+                      <span className="an-card-note">
+                        No QR code yet · showing the 8 oldest
+                      </span>
+                    </div>
+                    {data.watchlists.oldestAwaitingQr.length === 0 ? (
+                      <Empty>Every record in scope has been QR-tagged.</Empty>
+                    ) : (
+                      <table className="an-table">
+                        <thead>
+                          <tr>
+                            <th>Control no.</th>
+                            <th>Held by</th>
+                            <th className="an-num">Age</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.watchlists.oldestAwaitingQr.map((r) => (
+                            <tr key={r.id}>
+                              <td>
+                                <div className="an-cell-strong">{r.control_number}</div>
+                                <div className="an-cell-sub" title={r.title || ""}>
+                                  {r.title || "—"}
+                                </div>
+                              </td>
+                              <td>
+                                <div>{r.current_office || "Unknown office"}</div>
+                                <div className="an-cell-sub">
+                                  {r.priority}
+                                  {r.record_origin ? ` · ${r.record_origin}` : ""}
+                                </div>
+                              </td>
+                              <td className="an-num">
+                                <span
+                                  className={`an-age-chip${
+                                    r.ageDays >= 30
+                                      ? " an-age-hot"
+                                      : r.ageDays >= 7
+                                        ? " an-age-warm"
+                                        : ""
+                                  }`}
+                                >
+                                  {fmtDays(r.ageDays)}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+
+                  <div className="an-card an-card-table">
+                    <div className="an-card-head">
+                      <h3>Retention watchlist</h3>
+                      <span className="an-card-note">
+                        Records with a retention period set · soonest due first
+                      </span>
+                    </div>
+                    {data.watchlists.retention.length === 0 ? (
+                      <Empty>
+                        No record in scope has a retention period recorded, so nothing can be
+                        scheduled for disposal yet.
+                      </Empty>
+                    ) : (
+                      <table className="an-table">
+                        <thead>
+                          <tr>
+                            <th>Control no.</th>
+                            <th>Retention</th>
+                            <th className="an-num">Due</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.watchlists.retention.map((r) => (
+                            <tr key={r.id}>
+                              <td>
+                                <div className="an-cell-strong">{r.control_number}</div>
+                                <div className="an-cell-sub" title={r.title || ""}>
+                                  {r.current_office || "Unknown office"}
+                                </div>
+                              </td>
+                              <td>
+                                {r.retentionYears} yr{r.retentionYears === 1 ? "" : "s"}
+                                <div className="an-cell-sub">filed {fmtDate(r.created_at)}</div>
+                              </td>
+                              <td className="an-num">
+                                <span
+                                  className={`an-age-chip${
+                                    r.state === "overdue"
+                                      ? " an-age-hot"
+                                      : r.state === "soon"
+                                        ? " an-age-warm"
+                                        : ""
+                                  }`}
+                                >
+                                  {r.state === "overdue"
+                                    ? `overdue by ${fmtDays(Math.abs(r.daysLeft))}`
+                                    : `${fmtDays(r.daysLeft)} left`}
+                                </span>
+                                <div className="an-cell-sub">{fmtDate(r.dueAt)}</div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              </section>
+
+              {/* --------------------------------------- data quality */}
+              <section className="an-section">
+                <div className="an-section-head">
+                  <h2>Data quality</h2>
+                  <span className="an-section-note">
+                    What the system can and cannot measure, so a low number is never mistaken
+                    for good performance.
+                  </span>
+                </div>
+                <div className="an-grid-2">
+                  <div className="an-card">
+                    <div className="an-card-head">
+                      <h3>Completeness</h3>
+                      <span className="an-card-note">
+                        Retention is on file for {derived.retentionCoverage}% of records
+                      </span>
+                    </div>
+                    <ul className="an-bars">
+                      {data.dataQuality.map((item) => (
+                        <CoverageBar key={item.key} item={item} />
                       ))}
                     </ul>
-                  </Panel>
-                </div>
+                  </div>
 
-                <div className="col-12 col-lg-4">
-                  <Panel
-                    icon={<FaExclamationTriangle />}
-                    iconBg="rgba(239,68,68,.12)"
-                    iconColor={COLORS.red}
-                    title="System Alerts"
-                  >
-                    <div className="alert-card alert-red">
-                      <div className="fw-600">
-                        ⚠️ {retention.reduce((a, b) => a + b.overdue, 0)} documents
-                        past retention
-                      </div>
-                      <div className="small text-muted">
-                        Overdue for disposal review
-                      </div>
+                  <div className="an-card">
+                    <div className="an-card-head">
+                      <h3>How these numbers are calculated</h3>
+                      <span className="an-card-note">Definitions used on this page</span>
                     </div>
-                    <div className="alert-card alert-yellow">
-                      <div className="fw-600">
-                        📝 {backlogItems} pending {backlogItems === 1 ? "document" : "documents"}
+                    <dl className="an-defs">
+                      <div>
+                        <dt>Snapshot vs range</dt>
+                        <dd>
+                          Snapshot figures count every record in scope regardless of the date
+                          filter; range figures count records created inside the window only.
+                        </dd>
                       </div>
-                      <div className="small text-muted">
-                        Awaiting review in this range
+                      <div>
+                        <dt>Awaiting action</dt>
+                        <dd>
+                          A record with no QR code yet — the same rule used by the Operations
+                          Stream queue.
+                        </dd>
                       </div>
-                    </div>
-                    <div className="alert-card alert-blue">
-                      <div className="fw-600">
-                        💾 {receivedThisWeek} received this week
+                      <div>
+                        <dt>Past retention period</dt>
+                        <dd>
+                          created_at + retention_period years ≤ today. Records without a
+                          retention period cannot be evaluated and are excluded from that count.
+                        </dd>
                       </div>
-                      <div className="small text-muted">
-                        New documents in the last 7 days
+                      <div>
+                        <dt>Intake volume</dt>
+                        <dd>
+                          Records grouped by their created_at date, with empty periods filled
+                          as zero so discontinuities stay visible.
+                        </dd>
                       </div>
-                    </div>
-                  </Panel>
+                      <div>
+                        <dt>Previous-period change</dt>
+                        <dd>
+                          Compares the window with the immediately preceding window of the same
+                          length ({fmtInt(derived.w.previousTotal)} record(s) before this one).
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Classification folding</dt>
+                        <dd>
+                          {data.classificationMapping.length === 0
+                            ? "No legacy labels needed folding in the current range."
+                            : data.classificationMapping
+                                .map((m) => `"${m.raw}" → "${m.canonical}"`)
+                                .join("; ")}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Attachments</dt>
+                        <dd>
+                          Counted from stored file rows joined to existing records.
+                          {data.attachments.orphanFiles > 0
+                            ? ` ${fmtInt(data.attachments.orphanFiles)} row(s) still reference ${fmtInt(
+                                data.attachments.orphanDocs
+                              )} deleted record(s) and are excluded from the totals.`
+                            : ""}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
                 </div>
+              </section>
 
-                <div className="col-12 col-lg-4">
-                  <Panel
-                    icon={<FaBolt />}
-                    iconBg="rgba(100,116,139,.12)"
-                    iconColor={COLORS.slate}
-                    title="Quick Actions"
-                  >
-                    <button
-                      className="qa-item btn btn-light w-100 text-start"
-                      onClick={() => generatePeriodReport("monthly")}
-                    >
-                      🗓 Generate Monthly Report
-                    </button>
-                    <button
-                      className="qa-item btn btn-light w-100 text-start"
-                      onClick={() => generatePeriodReport("yearly")}
-                    >
-                      📅 Generate Yearly Report
-                    </button>
-                    <button
-                      className="qa-item btn btn-light w-100 text-start"
-                      onClick={exportAnalyticsCsv}
-                    >
-                      📥 Export Analytics Data
-                    </button>
-                    <button
-                      className="qa-item btn btn-light w-100 text-start"
-                      onClick={exportRetentionSchedule}
-                    >
-                      🗂 Manage Retention (CSV)
-                    </button>
-                  </Panel>
-                </div>
-              </div>
+              <footer className="an-footer">
+                Generated {derived.generatedLabel}
+                {refreshedAt ? ` · refreshed ${refreshedAt.toLocaleTimeString()}` : ""} · source:
+                live database ({scopeLabel})
+              </footer>
             </>
-          )}
+          ) : null}
+        </div>
         </div>
       </div>
     </div>

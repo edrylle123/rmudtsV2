@@ -3,18 +3,19 @@ import "./CreateRecordForm.css";
 import Sidebar from "./Sidebar";
 import Navbar from "./Navbar";
 import axios from "./axios";
+import { useAuth } from "../AuthContext";
 import useOffices from "../utils/useOffices";
 import "bootstrap/dist/css/bootstrap.min.css";
 
-const CLASSIFICATION_OPTIONS = [
+const DEFAULT_CLASSIFICATION_OPTIONS = [
   "Academic",
   "Administrative",
   "Financial",
   "HR",
   "Others",
 ];
-const PRIORITY_OPTIONS = ["Normal", "Urgent", "Immediate"];
-const ORIGIN_OPTIONS = ["Internal", "External"]; // Document type options
+const DEFAULT_PRIORITY_OPTIONS = ["Normal", "Urgent", "Immediate"];
+const DEFAULT_ORIGIN_OPTIONS = ["Internal", "External"];
 
 const CONCERNED_PERSONNEL = [
   " Elizabeth R. Oppuer",
@@ -341,6 +342,7 @@ const CONCERNED_PERSONNEL = [
 ];
 
 // Reusable autocomplete input
+// strict=true: only accepts values that exactly match an option from the list
 function AutocompleteInput({
   id,
   label,
@@ -350,14 +352,27 @@ function AutocompleteInput({
   options,
   required = true,
   placeholder,
+  strict = false,
 }) {
   const listId = `${id || name}-list`;
+  const [inputError, setInputError] = useState("");
   const normalizeOnBlur = () => {
-    if (!value) return;
+    if (!value) {
+      setInputError("");
+      return;
+    }
     const hit = options.find(
       (opt) => opt.toLowerCase() === value.trim().toLowerCase()
     );
-    if (hit && hit !== value) onChange({ target: { name, value: hit } });
+    if (hit) {
+      // Exact match found (case-insensitive) — snap to the canonical value
+      setInputError("");
+      if (hit !== value) onChange({ target: { name, value: hit } });
+    } else if (strict) {
+      // Strict mode: value not in list — reject it
+      setInputError(`Please select a valid option from the list.`);
+      onChange({ target: { name, value: "" } });
+    }
   };
   return (
     <div className="col-md-6">
@@ -366,11 +381,11 @@ function AutocompleteInput({
         {required ? " *" : ""}
       </label>
       <input
-        className="form-control"
+        className={`form-control ${inputError ? "is-invalid" : ""}`}
         name={name}
         list={listId}
         value={value || ""}
-        onChange={onChange}
+        onChange={(e) => { setInputError(""); onChange(e); }}
         onBlur={normalizeOnBlur}
         required={required}
         placeholder={placeholder}
@@ -381,7 +396,10 @@ function AutocompleteInput({
           <option key={opt} value={opt} />
         ))}
       </datalist>
-      {required && (
+      {inputError && (
+        <div className="invalid-feedback" style={{ display: "block" }}>{inputError}</div>
+      )}
+      {required && !inputError && (
         <div className="invalid-feedback">This field is required.</div>
       )}
     </div>
@@ -390,7 +408,11 @@ function AutocompleteInput({
 
 export default function CreateRecordForm() {
   const { offices: DESTINATION_OFFICES } = useOffices();
+  const { user } = useAuth();
   const [controlNumber, setControlNumber] = useState("");
+  // Control number layout is <YYMMDD>-<continuous number>: the date prefix is
+  // editable in the single box, the continuous number is fixed by the server.
+  const [controlSeq, setControlSeq] = useState("");
 
   const [formData, setFormData] = useState({
     office_requestor: "",
@@ -416,10 +438,42 @@ export default function CreateRecordForm() {
   const [formKey, setFormKey] = useState(0); // Add a key to force re-render
   const [isResetting, setIsResetting] = useState(false);
 
+  // Dynamic dropdown options from the database
+  const [classificationOptions, setClassificationOptions] = useState(DEFAULT_CLASSIFICATION_OPTIONS);
+  const [priorityOptions, setPriorityOptions] = useState(DEFAULT_PRIORITY_OPTIONS);
+  const [originOptions, setOriginOptions] = useState(DEFAULT_ORIGIN_OPTIONS);
+  // Concerned Personnel is managed by the super admin (Dropdown Options page).
+  // The built-in list is only a fallback for a fresh/empty database.
+  const [concernedPersonnelOptions, setConcernedPersonnelOptions] = useState(CONCERNED_PERSONNEL);
+
+  useEffect(() => {
+    const fetchOptions = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+        const headers = { Authorization: `Bearer ${token}` };
+        const [classRes, prioRes, origRes, concernedRes] = await Promise.all([
+          axios.get("/api/dropdown-options?category=classification", { headers }),
+          axios.get("/api/dropdown-options?category=priority", { headers }),
+          axios.get("/api/dropdown-options?category=origin", { headers }),
+          axios.get("/api/dropdown-options?category=concerned_personnel", { headers }),
+        ]);
+        if (classRes.data?.length) setClassificationOptions(classRes.data.map(o => o.value));
+        if (prioRes.data?.length) setPriorityOptions(prioRes.data.map(o => o.value));
+        if (origRes.data?.length) setOriginOptions(origRes.data.map(o => o.value));
+        if (concernedRes.data?.length)
+          setConcernedPersonnelOptions(concernedRes.data.map(o => o.value));
+      } catch (e) {
+        console.error("Failed to load dropdown options:", e);
+      }
+    };
+    fetchOptions();
+  }, []);
+
   // ---- handlers
   const handleOriginSwitch = (origin) => {
     setActiveOrigin(origin);
-    setFormData((s) => ({ ...s, record_origin: origin })); // This updates the formData with the correct origin
+    setFormData((s) => ({ ...s, record_origin: origin, office_requestor: '' })); // Clear office_requestor when switching origin type
   };
 
   // const handleChange = (e) => {
@@ -430,6 +484,19 @@ const handleChange = (e) => {
   const { name, value } = e.target;
   setFormData(prev => ({ ...prev, [name]: value }));
 };
+  // Single control-number box: the user may retype the YYMMDD date prefix,
+  // while the continuous number after "-" always stays the server-assigned one.
+  const handleControlNumberChange = (e) => {
+    const raw = String(e.target.value || "");
+    const prefix = raw.split("-")[0].replace(/\D/g, "").slice(0, 6);
+    setControlNumber(controlSeq ? `${prefix}-${controlSeq}` : prefix);
+  };
+
+  // External documents may be created without a destination office.
+  const isExternalOrigin =
+    String(activeOrigin || formData.record_origin || "").trim().toLowerCase() ===
+    "external";
+
   const mapKey = (f) => `${f.name}__${f.size}__${f.lastModified}`;
   const addFiles = (incomingList) => {
     const incoming = Array.from(incomingList || []);
@@ -554,7 +621,10 @@ useEffect(() => {
   axios
     .get("/next-control-number", { params: { origin: activeOrigin } })
     .then((response) => {
-      setControlNumber(response.data.control_number); // Update control number state
+      const next = response.data?.control_number || "";
+      setControlNumber(next); // Update control number state
+      // Keep the continuous number fixed — only the date prefix is editable.
+      setControlSeq(String(next).split("-")[1] || "");
     })
     .catch((err) => {
       console.error("Error fetching next control number:", err);
@@ -725,6 +795,30 @@ const handleSubmit = async (e) => {
     return;
   }
 
+  // The control-number date prefix is editable — it must stay a valid YYMMDD.
+  const cnPrefix = String(controlNumber || "").split("-")[0] || "";
+  if (controlSeq) {
+    if (!/^\d{6}$/.test(cnPrefix)) {
+      setError(
+        'Please enter the control number date as 6 digits, e.g., 261001.'
+      );
+      setSaving(false);
+      return;
+    }
+    const yyNum = parseInt(cnPrefix.slice(0, 2), 10);
+    const mmNum = parseInt(cnPrefix.slice(2, 4), 10);
+    const ddNum = parseInt(cnPrefix.slice(4, 6), 10);
+    const maxDay =
+      mmNum >= 1 && mmNum <= 12 ? new Date(2000 + yyNum, mmNum, 0).getDate() : 0;
+    if (!(mmNum >= 1 && mmNum <= 12) || !(ddNum >= 1 && ddNum <= maxDay)) {
+      setError(
+        'Control number date is invalid — check the month (01-12) and the day.'
+      );
+      setSaving(false);
+      return;
+    }
+  }
+
   // Explicit field validation — block if any required field is empty
   const requiredFields = {
     control_number: controlNumber,
@@ -732,9 +826,13 @@ const handleSubmit = async (e) => {
     description: formData.description,
     classification: formData.classification,
     priority: formData.priority,
-    destination_office: formData.destination_office,
     record_origin: formData.record_origin,
   };
+  // Destination Office is optional for External documents — they can be
+  // received by the Records Management Unit first and routed to an office later.
+  if (!isExternalOrigin) {
+    requiredFields.destination_office = formData.destination_office;
+  }
   const missingFields = Object.entries(requiredFields)
     .filter(([, v]) => !v || String(v).trim() === '')
     .map(([k]) => k.replace(/_/g, ' '));
@@ -744,12 +842,23 @@ const handleSubmit = async (e) => {
     return;
   }
 
-  // At least one file attached
-  if (!files || files.length === 0) {
-    setFilesError('At least one PDF file is required.');
-    setSaving(false);
-    return;
+  // Explicit field validation — block if any required field is empty
+  if (formData.record_origin === 'Internal') {
+    const match = DESTINATION_OFFICES.find(
+      (off) => off.toLowerCase() === (formData.office_requestor || '').trim().toLowerCase()
+    );
+    if (!match) {
+      setError('Office/Requestor must be selected from the predefined list for Internal documents.');
+      setSaving(false);
+      return;
+    }
+    // Snap to canonical casing
+    if (match !== formData.office_requestor) {
+      setFormData((prev) => ({ ...prev, office_requestor: match }));
+    }
   }
+
+  // Attachments are optional — a record can be created without any file.
 
   const formEl = formRef.current;
   if (!(formEl?.checkValidity?.() ?? true)) {
@@ -775,11 +884,17 @@ const handleSubmit = async (e) => {
       if (v !== undefined && v !== null && v !== "") fd.append(k, v);
     });
     fd.append("control_number", controlNumber);
-    fd.append("current_office", "Office of the President");
-    fd.append(
-      "destination_office",
-      formData.destination_office || "Office of the President"
-    );
+    // A record is filed at the office it is destined for, so current_office and
+    // destination_office both point there. Only when no destination is chosen
+    // (External documents may legitimately have none) does it fall back to the
+    // creator's own office so the record still has a home.
+    const destinationOffice = String(formData.destination_office || "").trim();
+    if (destinationOffice) {
+      fd.append("destination_office", destinationOffice);
+      fd.append("current_office", destinationOffice);
+    } else {
+      fd.append("current_office", user?.office || "Records Management Unit");
+    }
 
     // Append the attachments
     files.forEach((file) => fd.append("files", file));
@@ -905,6 +1020,7 @@ const resetForm = () => {
 
   // Clear derived states
   setControlNumber("");
+  setControlSeq("");
   setFiles([]);
   setValidated(false);
   setFilesError("");
@@ -928,12 +1044,13 @@ const resetForm = () => {
       <div className="flex-grow-1">
         <Navbar />
         <div className="container p-3">
-          <h2>Create New Record</h2>
+          <div className="record-form-wrap">
+          <h2 className="record-form-title">Create New Record</h2>
           {error && <div className="alert alert-danger">{error}</div>}
 
           <div className="record-form-card">
           <div className="mb-3 d-flex gap-2">
-            {ORIGIN_OPTIONS.map((opt) => (
+            {originOptions.map((opt) => (
               <button
                 key={opt}
                 type="button"
@@ -955,7 +1072,8 @@ const resetForm = () => {
               encType="multipart/form-data"
               noValidate
             >
-              {/* Control No */}
+              {/* Control No. — previous single-field style: the date (YYMMDD)
+                  is editable, the continuous number is fixed by the server. */}
               <div className="col-md-6">
                 <label className="form-label">Control No. *</label>
                 <input
@@ -963,17 +1081,17 @@ const resetForm = () => {
                   name="control_number"
                   pattern="[A-Za-z0-9._\-\/]+"
                   value={controlNumber}
-                  onChange={handleChange}
-                  placeholder="e.g., 2025-09-001"
+                  onChange={handleControlNumberChange}
+                  placeholder="e.g., 261001-2487"
                   required
                   autoComplete="off"
-                  readOnly
                 />
                 <div className="invalid-feedback">
                   Control number is required.
                 </div>
                 <div className="form-text">
-                  Letters, numbers, -, _, /, . allowed
+                  The date (YYMMDD) is editable — the number after "-" is
+                  assigned automatically.
                 </div>
               </div>
               {/* Day (User Defined) */}
@@ -989,16 +1107,34 @@ const resetForm = () => {
                 />
               </div> */}
 
-              <AutocompleteInput
-                key={`${formKey}-office_requestor`}
-                label="Office/Requestor"
-                name="office_requestor"
-                value={formData.office_requestor ?? ""}
-                onChange={handleChange}
-                options={DESTINATION_OFFICES}
-                placeholder="Select Office/Requestor"
-                required
-              />
+              {/* Office/Requestor — autocomplete for Internal (type to filter),
+                  free-text for External (user-defined) */}
+              {isExternalOrigin ? (
+                <div className="col-md-6">
+                  <label className="form-label">Office/Requestor *</label>
+                  <input
+                    className="form-control"
+                    name="office_requestor"
+                    value={formData.office_requestor ?? ""}
+                    onChange={handleChange}
+                    required
+                    placeholder="Enter office or requestor name"
+                  />
+                  <div className="invalid-feedback">This field is required.</div>
+                </div>
+              ) : (
+                <AutocompleteInput
+                  key={`${formKey}-office_requestor`}
+                  label="Office/Requestor"
+                  name="office_requestor"
+                  value={formData.office_requestor ?? ""}
+                  onChange={handleChange}
+                  options={DESTINATION_OFFICES}
+                  placeholder="Type to search office..."
+                  required
+                  strict
+                />
+              )}
 
               {/* Description */}
               <div className="col-12">
@@ -1020,7 +1156,7 @@ const resetForm = () => {
                 name="classification"
                 value={formData.classification ?? ""}
                 onChange={handleChange}
-                options={CLASSIFICATION_OPTIONS}
+                options={classificationOptions}
                 placeholder="e.g., Academic"
               />
               <AutocompleteInput
@@ -1029,7 +1165,7 @@ const resetForm = () => {
                 name="priority"
                 value={formData.priority ?? ""}
                 onChange={handleChange}
-                options={PRIORITY_OPTIONS}
+                options={priorityOptions}
                 placeholder="e.g., Normal"
               />
 
@@ -1040,12 +1176,12 @@ const resetForm = () => {
                 name="concerned_personnel"
                 value={formData.concerned_personnel ?? ""}
                 onChange={handleChange}
-                options={CONCERNED_PERSONNEL}
+                options={concernedPersonnelOptions}
                 placeholder="Select Concerned Personnel"
                 required={false}
               />
 
-              {/* Destination Office */}
+              {/* Destination Office — optional/not required for External */}
               <AutocompleteInput
                 key={`${formKey}-destination_office`}
                 label="Destination Office"
@@ -1053,7 +1189,12 @@ const resetForm = () => {
                 value={formData.destination_office ?? ""}
                 onChange={handleChange}
                 options={DESTINATION_OFFICES}
-                placeholder="Select Destination Office"
+                placeholder={
+                  isExternalOrigin
+                    ? "Optional — select or type an office"
+                    : "Select Destination Office"
+                }
+                // required={!isExternalOrigin}
               />
 
               {/* Attachments */}
@@ -1078,7 +1219,8 @@ const resetForm = () => {
                     Drag & drop files here or click to browse
                   </div>
                   <div className="text-muted small">
-                    PDF attachments (optional)
+                    PDF attachments (optional) — you can create the record
+                    without attaching a file.
                   </div>
                 </div>
                 {filesError && (
@@ -1128,6 +1270,7 @@ const resetForm = () => {
                 </button>
               </div>
             </form>
+          </div>
           </div>
           </div>
         </div>

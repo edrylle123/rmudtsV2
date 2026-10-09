@@ -13,6 +13,7 @@
   position: sticky;
   top: 0;
   z-index: 1030;
+  flex-shrink: 0;
 }
 
 .navbar-header {
@@ -35,6 +36,7 @@
   place-items: center;
   flex-shrink: 0;
   transition: background 0.15s;
+margin-left: 8px;
 }
 .navbar-hamburger:hover {
   background: rgba(255,255,255,0.25);
@@ -109,6 +111,7 @@
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
+  margin-right: 14px;
 }
 .btn-logout:hover {
   background: rgba(220,50,50,0.3);

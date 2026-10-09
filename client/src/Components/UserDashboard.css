@@ -3,6 +3,7 @@
    ============================================================ */
 .content-area {
   padding: 24px;
+  /* padding-top: calc(var(--navbar-h, 64px) + 24px); */
 }
 
 .dashboard-widgets {
@@ -89,9 +90,11 @@
 /* ---------- Card meta ---------- */
 .card-meta p {
   margin: 3px 0;
-  font-size: 0.88rem;}
+  font-size: 0.88rem;
+}
 .card-meta strong {
-  color: var(--text);}
+  color: var(--text);
+}
 
 .card-files {
   margin-top: 10px;
@@ -182,7 +185,7 @@
 }
 
 .records-cards .card-header {
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   background: transparent;
   border: none;
   padding: 0;

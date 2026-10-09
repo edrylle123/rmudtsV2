@@ -18,6 +18,9 @@ export default function UserDashboard() {
 
   // Multi-office forwarding state
   const [selectedOffices, setSelectedOffices] = useState({});
+  // Routing slip toggle + signed doc upload
+  const [includeSlip, setIncludeSlip] = useState({}); // { [recordId]: true/false }
+  const [signedFiles, setSignedFiles] = useState({}); // { [recordId]: File }
 
   // Filter states
   const [originFilter, setOriginFilter] = useState("All");
@@ -129,7 +132,8 @@ export default function UserDashboard() {
   );
 
   // Documents that are no longer in this office (forwarded away)
-  const finished = useMemo(
+  // eslint-disable-next-line no-unused-vars
+  const _finished = useMemo(
     () =>
       records.filter(
         (r) =>
@@ -210,9 +214,23 @@ export default function UserDashboard() {
 
     setForwardingId(record.id);
     try {
+      // Upload signed document first if provided
+      const signedFile = signedFiles[record.id];
+      if (signedFile) {
+        const fd = new FormData();
+        fd.append('signed_file', signedFile);
+        await axios.post(`/api/records/${record.id}/signed-doc`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      }
       await axios.put(`/records/forward/${record.id}`, {
         destination_offices: selected,
+        include_slip: includeSlip[record.id] !== false, // default true
       });
+      // Clear the signed file after successful forward
+      if (signedFile) {
+        setSignedFiles((prev) => ({ ...prev, [record.id]: null }));
+      }
       alert(`Record forwarded to ${selected.join(", ")}.`);
       setSelectedOffices((prev) => ({ ...prev, [record.id]: [] }));
       reloadRecords();
@@ -354,6 +372,31 @@ export default function UserDashboard() {
               )}
             </div>
           </div>
+          {/* Routing slip toggle */}
+          <div className="form-check form-switch mt-2" style={{ fontSize: '0.8rem' }}>
+            <input
+              className="form-check-input"
+              type="checkbox"
+              role="switch"
+              id={`slip-${r.id}`}
+              checked={includeSlip[r.id] !== false}
+              onChange={(e) => setIncludeSlip((prev) => ({ ...prev, [r.id]: e.target.checked }))}
+            />
+            <label className="form-check-label" htmlFor={`slip-${r.id}`}>📎 Attach Routing Slip</label>
+          </div>
+          {/* Signed document upload */}
+          <div className="mt-1" style={{ fontSize: '0.8rem' }}>
+            <label className="form-label text-muted mb-0">📝 Upload Signed Document (optional)</label>
+            <input
+              type="file"
+              className="form-control form-control-sm"
+              accept="application/pdf"
+              onChange={(e) => setSignedFiles((prev) => ({ ...prev, [r.id]: e.target.files[0] || null }))}
+            />
+            {signedFiles[r.id] && (
+              <div className="text-success small mt-1">✅ {signedFiles[r.id].name}</div>
+            )}
+          </div>
           <button
             className="btn-release"
             disabled={selected.length === 0 || forwardingId === r.id}
@@ -431,14 +474,14 @@ export default function UserDashboard() {
               <div className="widget-title">Total Active</div>
               <div className="widget-value">{inOffice.length}</div>
             </div>
-            <div className="widget" style={{ opacity: 0.7 }}>
+            {/* <div className="widget" style={{ opacity: 0.7 }}>
               <div className="widget-title">Finished</div>
               <div className="widget-value" style={{ fontSize: "1.2rem" }}>
                 <a href="/finished-documents" style={{ color: "inherit" }}>
                   {finished.length} →
                 </a>
               </div>
-            </div>
+            </div> */}
           </div>
 
           {/* Send to Records Unit Button */}

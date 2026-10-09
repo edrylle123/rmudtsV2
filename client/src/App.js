@@ -17,6 +17,7 @@ import CreateRecordPage from "./Components/CreateRecordPage";
 import CreateUserPage from "./Components/CreateUserPage";
 import AllRecords from "./Components/AllRecords";
 import Analytics from "./Components/Analytics";
+import Reports from "./Components/Reports";
 import AllUsers from "./Components/AllUsers";
 import RoutingSlipSettings from "./Components/RoutingSlipSettings";
 import OfficeManagement from "./Components/OfficeManagement";
@@ -98,17 +99,25 @@ export default function App() {
           <Route
             path="/all-records"
             element={
-              <ProtectedRoute allowedRoles={["admin", "super_admin", "user"]}>
+              <ProtectedRoute allowedRoles={["admin", "super_admin"]}>
                 <AllRecords />
               </ProtectedRoute>
             }
           />
 
-          <Route
+                    <Route
             path="/analytics"
             element={
               <ProtectedRoute allowedRoles={["admin", "super_admin"]}>
                 <Analytics />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              <ProtectedRoute allowedRoles={["admin", "super_admin"]}>
+                <Reports />
               </ProtectedRoute>
             }
           />
@@ -169,7 +178,7 @@ export default function App() {
           <Route
             path="/attachment-viewer"
             element={
-              <ProtectedRoute allowedRoles={["admin", "super_admin", "user"]}>
+              <ProtectedRoute>
                 <AttachmentViewer />
               </ProtectedRoute>
             }
@@ -206,7 +215,7 @@ export default function App() {
       <Route
         path="/routing-slip"  
         element={
-          <ProtectedRoute allowedRoles={["admin", "super_admin", "user"]}>
+          <ProtectedRoute allowedRoles={["admin", "super_admin"]}>
             <RoutingSlip /> {/* <- NEW Route for RoutingSlip component */}
           </ProtectedRoute>
         }

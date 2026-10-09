@@ -1,17 +1,20 @@
 // client/src/login.js
 import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import axios from "./Components/axios";
 import "./login.css";
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
 
   const [form, setForm] = useState({ idNumber: "", password: "" });
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
+  const [err, setErr] = useState(
+    location.state?.idleLogout || ""
+  );
 
   const onChange = (e) => {
     const { name, value } = e.target;
@@ -149,7 +152,7 @@ export default function Login() {
           </form>
 
           <p className="auth-foot">
-            <Link to="/signup">Forgotten username or password?</Link>
+            {/* <Link to="/signup">Forgotten username or password?</Link> */}
           </p>
         </div>
       </div>

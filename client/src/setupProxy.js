@@ -6,15 +6,65 @@
 const { createProxyMiddleware } = require("http-proxy-middleware");
 
 module.exports = function (app) {
+  // Proxy ALL backend API routes
   app.use(
-    "/api/file-proxy",
+    "/records",
     createProxyMiddleware({
       target: "http://localhost:8081",
       changeOrigin: true,
     })
   );
   app.use(
-    "/api/pdf-viewer",
+    "/login",
+    createProxyMiddleware({
+      target: "http://localhost:8081",
+      changeOrigin: true,
+    })
+  );
+  app.use(
+    "/signup",
+    createProxyMiddleware({
+      target: "http://localhost:8081",
+      changeOrigin: true,
+    })
+  );
+  app.use(
+    "/refresh-token",
+    createProxyMiddleware({
+      target: "http://localhost:8081",
+      changeOrigin: true,
+    })
+  );
+  app.use(
+    "/users",
+    createProxyMiddleware({
+      target: "http://localhost:8081",
+      changeOrigin: true,
+    })
+  );
+  app.use(
+    "/offices",
+    createProxyMiddleware({
+      target: "http://localhost:8081",
+      changeOrigin: true,
+    })
+  );
+  app.use(
+    "/notifications",
+    createProxyMiddleware({
+      target: "http://localhost:8081",
+      changeOrigin: true,
+    })
+  );
+  app.use(
+    "/next-control-number",
+    createProxyMiddleware({
+      target: "http://localhost:8081",
+      changeOrigin: true,
+    })
+  );
+  app.use(
+    "/api",
     createProxyMiddleware({
       target: "http://localhost:8081",
       changeOrigin: true,

@@ -6,35 +6,16 @@ import axios from "./axios";
 import { useAuth } from "../AuthContext";
 import "./Dashboard.css";
 
-// BlobPdf fetches PDF as base64 data URI to bypass IDM and CORS
-function blobToBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
-function BlobPdf({ filePath, title, style }) {
-  const [dataUri, setDataUri] = useState(null);
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    let cancelled = false;
-    const proxyUrl = `/api/file-proxy?path=${encodeURIComponent(filePath)}`;
-    fetch(proxyUrl)
-      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
-      .then((blob) => blobToBase64(blob))
-      .then((b64) => { if (!cancelled) { setDataUri(b64); setLoading(false); } })
-      .catch((err) => { if (!cancelled) { setError(err.message || 'load failed'); setLoading(false); } });
-    return () => { cancelled = true; };
-  }, [filePath]);
-  if (error) return <div style={{ padding: 16, color: '#dc3545' }}>Failed to load PDF. {error}</div>;
-  if (loading) return <div style={{ padding: 16, color: '#6c757d' }}>Loading PDF...</div>;
+// PdfViewer uses the server-side HTML wrapper page to render PDFs
+// IDM cannot intercept it because the iframe loads HTML, not a direct PDF URL
+function PdfViewer({ filePath, title, style }) {
+  const viewerUrl = `/api/pdf-viewer?path=${encodeURIComponent(filePath)}`;
   return (
-    <object data={dataUri} type="application/pdf" title={title || 'PDF'} style={style}>
-      <div style={{ padding: 16, color: '#dc3545' }}>Your browser cannot display PDFs inline.</div>
-    </object>
+    <iframe
+      src={viewerUrl}
+      title={title || 'PDF'}
+      style={style || { width: '100%', height: '600px', border: 'none' }}
+    />
   );
 }
 
@@ -198,7 +179,7 @@ export default function IncomingDocuments() {
                           marginBottom: "10px",
                         }}
                       >
-                        <BlobPdf
+                        <PdfViewer
                           filePath={doc.file_path}
                           title={doc.file_name}
                           style={{ width: "100%", height: "300px", border: "none" }}

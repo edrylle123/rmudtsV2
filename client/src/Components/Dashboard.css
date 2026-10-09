@@ -4,15 +4,31 @@
 
 .content-wrapper {
   flex-grow: 1;
-  min-height: 100vh;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.content-wrapper > .container-fluid {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.dashboard-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg, #f5f5f5);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border, #e0e0e0);
 }
 
 .dashboard-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
-  gap: 24px;
-  margin: 20px 0 10px;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 12px 0 10px;
 }
 
 .chart-container {
@@ -50,6 +66,7 @@
 }
 .filter-icon {
   font-size: 1rem;
+  margin-right: 6px;
   color: var(--brand-600);
 }
 .filter-container .form-select,
@@ -277,6 +294,13 @@
   text-align: center;
 }
 
+/* Edit modal now holds every record field, so it needs more room than the
+   default 640px modal. */
+.modal-content.edit-record-modal {
+  max-width: 860px;
+  width: 92%;
+}
+
 .close-btn {
   background: none;
   border: none;
@@ -325,11 +349,8 @@
 
 /* ---------- Responsive ---------- */
 @media (max-width: 992px) {
-  .dashboard-grid {
-    grid-template-columns: 1fr;
-  }
   .chart-container {
-    margin-top: 8px;
+    margin-top: 0;
   }
 }
 

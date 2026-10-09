@@ -15,6 +15,7 @@ import {
   FaInbox,
 } from "react-icons/fa";
 import { FaLocationCrosshairs } from "react-icons/fa6";
+import { FaClipboardList } from "react-icons/fa";
 import { MdDashboard } from "react-icons/md";
 import { useAuth } from "../AuthContext";
 import "./Sidebar.css";
@@ -91,6 +92,9 @@ export default function Sidebar() {
       </Item>
       <Item to="/analytics" icon={<FaChartLine />}>
         Analytics
+      </Item>
+      <Item to="/reports" icon={<FaClipboardList />}>
+        Reports
       </Item>
       <div className="sidebar-section-label">Management</div>
       <Item to="/trackrecord" icon={<FaLocationCrosshairs />}>

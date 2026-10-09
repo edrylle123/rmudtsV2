@@ -5,21 +5,24 @@ import axios from "./axios";
 import { socket } from "../socket";
 import "./PriorityBadges.css";
 import "./Dashboard.css"; // Assuming you have some CSS for styling
-import { FaQrcode, FaPencilAlt, FaTrashAlt, FaFileAlt, FaEye, FaPaperPlane } from "react-icons/fa";
+import { FaQrcode, FaPencilAlt, FaFileAlt, FaEye, FaPaperPlane, FaDownload, FaPrint, FaTrash } from "react-icons/fa";
 import { RiHomeOfficeFill } from "react-icons/ri";
 import { BsCalendarDateFill } from "react-icons/bs";
 import {
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
   ResponsiveContainer,
+  AreaChart,
+  Area,
+  LineChart,
+  Line,
 } from "recharts";
 import useOffices from "../utils/useOffices";
 import { useAuth } from "../AuthContext";
+import OperationsStream from "./OperationsStream";
 
 
 // PdfViewer renders PDFs inside an iframe that loads an HTML wrapper page.
@@ -33,53 +36,6 @@ function PdfViewer({ filePath, title, style }) {
       title={title || 'PDF'}
       style={style || { width: '100%', height: '600px', border: 'none' }}
     />
-  );
-}
-
-function AutocompleteInput({
-  id,
-  label,
-  name,
-  value,
-  onChange,
-  options,
-  required = false,
-  placeholder,
-}) {
-  const listId = `${id || name}-list`;
-  const normalizeOnBlur = () => {
-    if (!value) return;
-    const hit = options.find(
-      (opt) => opt.toLowerCase() === value.trim().toLowerCase()
-    );
-    if (hit && hit !== value) onChange({ target: { name, value: hit } });
-  };
-  return (
-    <div className="col-md-6">
-      <label className="form-label">
-        {label}
-        {required ? " *" : ""}
-      </label>
-      <input
-        className="form-control"
-        name={name}
-        list={listId}
-        value={value || ""}
-        onChange={onChange}
-        onBlur={normalizeOnBlur}
-        required={required}
-        placeholder={placeholder}
-        autoComplete="off"
-      />
-      <datalist id={listId}>
-        {options.map((opt) => (
-          <option key={opt} value={opt} />
-        ))}
-      </datalist>
-      {required && (
-        <div className="invalid-feedback">This field is required.</div>
-      )}
-    </div>
   );
 }
 
@@ -104,6 +60,63 @@ const normalizeQrPath = (p) =>
     .replace(/^[A-Za-z]:/, "")
     .replace(/^\/+/, "/");
 
+// Labeled input (+ optional datalist) used by the edit modal so every record
+// field can be changed from the card, not just the retention period.
+function EditField({
+  col = "col-md-6",
+  label,
+  name,
+  value,
+  onChange,
+  options = [],
+  type = "text",
+  rows,
+  required = false,
+  placeholder,
+}) {
+  const listId = `edit-${name}-list`;
+  return (
+    <div className={col}>
+      <label className="form-label fw-semibold">
+        {label}
+        {required ? " *" : ""}
+      </label>
+      {type === "textarea" ? (
+        <textarea
+          className="form-control"
+          name={name}
+          rows={rows || 2}
+          value={value ?? ""}
+          onChange={onChange}
+          required={required}
+          placeholder={placeholder}
+        />
+      ) : (
+        <>
+          <input
+            className="form-control"
+            name={name}
+            type="text"
+            list={options.length ? listId : undefined}
+            value={value ?? ""}
+            onChange={onChange}
+            required={required}
+            placeholder={placeholder}
+            autoComplete="off"
+          />
+          {options.length > 0 && (
+            <datalist id={listId}>
+              {options.map((o) => (
+                <option key={o} value={o} />
+              ))}
+            </datalist>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { offices: OFFICES } = useOffices();
   const fmtDateTime = (v) => {
@@ -122,7 +135,7 @@ export default function Dashboard() {
   const [rowsRaw, setRowsRaw] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [deletingId, setDeletingId] = useState(null);
+  // const [deletingId, setDeletingId] = useState(null);
   const { user } = useAuth();
   const myOffice = user?.office || '';
   // viewedRecords: object { [recordId]: [office1, office2, ...] }
@@ -135,6 +148,7 @@ export default function Dashboard() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [searchTerm, setSearchTerm] = useState("");
 
   const [showModal, setShowModal] = useState(false); // State for showing the modal
   const [selectedRecord, setSelectedRecord] = useState(null); // Record selected for editing
@@ -142,11 +156,20 @@ export default function Dashboard() {
   const [viewRecord, setViewRecord] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
   const [detailFiles, setDetailFiles] = useState([]);
+  // Attachments inside the edit modal
+  const [editFiles, setEditFiles] = useState([]); // files already stored on the record
+  const [editNewFiles, setEditNewFiles] = useState([]); // files queued for upload
+  const [editFilesError, setEditFilesError] = useState("");
+  const [editDragActive, setEditDragActive] = useState(false);
+  const editFileInputRef = useRef(null);
   // Forwarding state
   const [forwardingId, setForwardingId] = useState(null);
   const [officeSearch, setOfficeSearch] = useState({});
   const [showSuggestions, setShowSuggestions] = useState({});
   const [selectedOffices, setSelectedOffices] = useState({});
+  // Routing slip toggle + signed document upload per record
+  const [includeSlip, setIncludeSlip] = useState({}); // { [recordId]: true/false }
+  const [signedFiles, setSignedFiles] = useState({}); // { [recordId]: File }
   const [formData, setFormData] = useState({
     control_number: "",
     office_requestor: "",
@@ -157,16 +180,7 @@ export default function Dashboard() {
     concerned_personnel: "",
     destination_office: "",
     retention_period: "",
-    remarks: "",
   });
-  const CLASSIFICATION_OPTIONS = [
-    "Academic",
-    "Administrative",
-    "Financial",
-    "HR",
-    "Others",
-  ];
-  const PRIORITY_OPTIONS = ["Normal", "Urgent", "Immediate"];
   const RETENTION_OPTIONS = [
     { label: "1 Year", value: "1" },
     { label: "2 Years", value: "2" },
@@ -182,380 +196,43 @@ export default function Dashboard() {
   ];
 
   const DESTINATION_OFFICES = OFFICES;
-  const CONCERNED_PERSONNEL = [
-    " Elizabeth R. Oppuer",
-    " Jamina G. Camayang",
-    " Maria C. Hernandez",
-    " Katherina C. Sarsonas",
-    " Jonah C. Celestino",
-    " Isabel F. Salvador",
-    " Rosalyn L. Delizo",
-    " Leila M. Sabbaluca",
-    " Fredisminda M. Dolojan",
-    " Cynthia Grace T. Valdez",
-    " Jimmy S. Matias",
-    " Edgar V. Benabise",
-    " Mila T. Benabise",
-    " George S. Lajola",
-    " Julie E. Luis",
-    " Agaton Jr. P. Pattalitan",
-    " Jaysonn P. Villamayor",
-    " Ceasar M. Bangloy",
-    " Ma. Theresa B. Valerio",
-    " Cherry P. Collado",
-    " Rodrigo Jr. H. Castillo",
-    " Nelson D. Guray",
-    " Rhiza Grace A. Ramos",
-    " Romeo Jr. B. Nanglihan",
-    " Josefina G. Luis",
-    " Lahaina Sue C. Azarcon",
-    " Rey C. Naval",
-    " Nida G. Quitan",
-    " Ronald T. Delos Santos",
-    " Arlyn J. Yra",
-    " Jay-r R. Duldulao",
-    " Divine Grace D. Olaño",
-    " Arsenia V. Duldulao",
-    " Jhanrol M. Pascual",
-    " Jay Francis P. Yra",
-    " Mary Ann R. Dela Cruz",
-    " Eleanor G. Garingan",
-    " Julius G. Gumayagay",
-    " Janet D. Marcos",
-    " Divina Gracia S. Sabio",
-    " Elizabeth T. Carig",
-    " Jenalyn M. Sarmiento",
-    " Allan G. Galam",
-    " Jaimark P. Villamayor",
-    " Jonathan N. Tariga",
-    " Elizabeth D. Antonio",
-    " Ruby Lyn V. Gutierrez",
-    " Romar B. Antonio",
-    " Leah Grace R. Baguilat",
-    " Myra T. Sagun",
-    " Eddie L. Salvador",
-    " Rommel G. Peralta",
-    " Dyanika P. Nolasco",
-    " Tessie N. Butic",
-    " Remylien C. Songco",
-    " Ana Maria C. Ventura",
-    " Ray John M. Ramos",
-    " Jennyvi G. Pascua",
-    " Ma. Kristine Grace V. Ocado",
-    " Florigold V. Saldaen",
-    " Kristine Joy A. Castillo",
-    " Velor Jay B. Olaño",
-    " Mary Grace L. Sadang",
-    " Romiro G. Bautista",
-    " Maria Elena D. Dupa",
-    " Lorelie B. Marquez",
-    " Eden Maye D. Barayuga",
-    " Baldomero Jr. T. Lacaden",
-    " Joel G. Carig",
-    " Princess Lady-Lin C. Eraña",
-    " Mary Rose C. Liwag",
-    " Greguel Ailan D. Barayuga",
-    " Jonalyn J. Quinan",
-    " Julious C. Matias",
-    " Florante U. Galindo",
-    " Joselle D. Concepcion",
-    " Elizabeth P. Ancheta",
-    " Nimpha B. Amtalao",
-    " Crisanta L. Baquiran",
-    " Mary Glo M. Bonilla",
-    " Jefferson N. Curammeng",
-    " Rosalinda N. Espaldon",
-    " Melanie L. Fulgencio",
-    " Nito B. Galanta",
-    " Mary Joy E. Gumayagay",
-    " Mishell Q. Jaramillo",
-    " Cristobal B. Laslas",
-    " Liezel S. Lopez",
-    " Juniora Blessie Ann N. Martinez",
-    " Dennis S. Opiano",
-    " Amelia B. Pascua",
-    " Ailyn Joy T. Padrigo",
-    " Rowena Y. Pimentel",
-    " France Marie Ann R. Tacadena",
-    " Jesusie T. Ramones",
-    " Mary Joy A. Roldan",
-    " Aimee Carol R. Tangonan",
-    " April Corazon G. Abon",
-    " Israel M. Eraña",
-    " Maricris V. Nanglihan",
-    " Paul B. Pablo",
-    " Minajoy B. Wigan",
-    " German Jr. P. Umhaw",
-    " Mariel May S. Kidkid",
-    " Claudine Fay T. Domingo",
-    " Nobelyn V. Agapito",
-    " Danisse Mae P. Hernandez",
-    " Frelita O. Bartolome",
-    " Gilbren Jane G. Camayang",
-    " Reymund S. Grospe",
-    " Ysmael R. Draman",
-    " Arnel B. Agbayani",
-    " Denson M. Liday",
-    " Marites M. Ancheta",
-    " Avelino Jr. V. Pangilinan",
-    " Samuel B. Quezon",
-    " Rachel Jade C. Yere",
-    " Krisma Jean L. Vargas",
-    " Maria Teresa O. Bucio",
-    " Darwynn B. Estillore",
-    " Jaypee Angelo P. Manuel",
-    " Rowena S. Cabacungan",
-    " Marjorie C. Opiano",
-    " Winrich John A. Vargas",
-    " Richard P. Pablo",
-    " Jerol C. Dupaya",
-    " Marnie L. Bacdangan",
-    " Junmar A. Liwan",
-    " Myleene V. Bulong",
-    " Jay-Ar C. Del Rosario",
-    " Lourdes A. Curzon",
-    " Benjamin II S. Julian",
-    " Elyzar R. Rico",
-    " Henrey R. Ignacio",
-    " Maricel B. Barroga",
-    " William Jr. L. Sabug",
-    " Abigail T. Bongtayon",
-    " Marvin D. Olog",
-    " Marites O. Domingo",
-    " Sherwin A. Eugenio",
-    " Resty V. Gumuwang",
-    " Robert L. Damayon",
-    " Jumreih T. Cacal",
-    " Mae Ann C. Gawat",
-    " Girlie A. Dela Cruz",
-    " Elisio A. Ocado",
-    " Gideon Jyrus A. Matias",
-    " Vincent Aldrin A. Yap",
-    " Mary Jane T. Puon",
-    " Czarina Jean S. Tolenada",
-    " Krista Jessa Mae D. Loñez",
-    " Devited P. Jaramillo",
-    " Jay ar L. Dultiao",
-    " Jesa Jane F. Sales",
-    " Anjomar P. Tuazon",
-    " Merlyn P. Guade",
-    " Devorah Jane B. Beltran",
-    " Mark O. Palaje",
-    " John Paul C. Afalla",
-    " John John A. Abubo",
-    " Ricky G. Puon",
-    " Norman Jay E. Bulong",
-    " Romelyn S. Tugade",
-    " Arnel D. Esquibal",
-    " Marilyne C. Attaban",
-    " Bladimer Ali Annuar T. Lacaden",
-    " Rodolfo E. Luis",
-    " Edison Kurt M. Pacunla",
-    " Rommel V. Padrigo",
-    " Victoria N. Vicente",
-    " Edralyn A. Galamay",
-    " Belmer Jr. P. Guerrero",
-    " Jhon Mark S. Agsalud",
-    " Geraldine T. Fernando",
-    " Monica B. Naval",
-    " Christian Cel W. Julian",
-    " Ronald M. Buscayno",
-    " Robert John C. Tobias",
-    " Paul P. Macarilay",
-    " Nigel Fernand T. Corpuz",
-    " Primalyn G. Quimson",
-    " Vanessa Jean B. Patindol",
-    " Nelson B. Ohomna",
-    " Edrylle Jann T. Ramos",
-    " Cynthia G. Ayado",
-    " Gerlyn B. Orpiano",
-    " Mark Jefferson L. Mauyao",
-    " Dionie M. Necor",
-    " Harold N. Valentino",
-    " Krestalin A. Castillo",
-    " Mylavi H. Bernardino",
-    " Giancarlo B. Bautista",
-    " Jestonie T. De Vera",
-    " Gerald M. Lamaroza",
-    " Lenie C. Pascua",
-    " Helen M. Villanueva",
-    " Krisette Maie J. Sagales",
-    " Andrei Josef C. Guiamoy",
-    " Reynaldo Jr. M. Dulatre",
-    " Reymos C. Mabudyang",
-    " Mechil C. Domingo",
-    " Alvin A. Bangloy",
-    " Alphine P. Seriosa",
-    " Gazelle C. Nazarro",
-    " Geoff D. Monsalud",
-    " Marijoy C. Awisen",
-    " Shamma Mae A. Agustin",
-    " Romie Jr. E. Antonio",
-    " Kevin Mar T. Dela Cruz",
-    " Bernard Jr. G. Baui",
-    " Maribel J. Zonio",
-    " Jojie Joy P. Retoria",
-    " Jonathan C. Pablo",
-    " Jheremy T. Escalante",
-    " Ma. Anthonette S. Cabe",
-    " Jezrelle Joy T. Dela Cruz",
-    " Rohito P. Roga",
-    " Mary Ann T. Magbanua",
-    " Gremilyn D. Padrigo",
-    " Evien Reinel B. Gulan",
-    " Analiza  Tuppal",
-    " Marrieta  Mangoba",
-    " Irene M. Abenojar",
-    " Maricar R. Abello",
-    " Kristine Joy C. Mendoza",
-    " Jomari L. Martinez",
-    " Valen Jesnna L. Andres",
-    " Demetrio Jr. P. Tomas",
-    " Jeremy M. Abad",
-    " Fergie Anne A. Cafirma",
-    " Raymart M. Alvarez",
-    " Ciarayna Len E. Diampoc",
-    " Jomerson R. Tolentino",
-    " Kristine Bernadette M. Apolonio",
-    " Peter Paul D. Guray",
-    " Germilyne B. Anzaldo",
-    " Blessing C. Ganotice",
-    " Joecelle Celeste C. Manuel",
-    " Arnold N. Pugong",
-    " Jonelyn L. Agmaliw",
-    " Bernadette D. Asuncion",
-    " Elaine May R. Gonzales",
-    " Silverio Jr. D. Pascua",
-    " Justin A. Padua",
-    " Gideon L. Pingkihan",
-    " Michael R. Magdangal",
-    " Jennifer O. Dupaya",
-    " Ronalyn L. Barawid",
-    " Eula Jane M. Tamayo",
-    " Johnalyn T. Valentino",
-    " Monica D. Hernando",
-    " Brandon James D. Lagmay",
-    " Glomar N. Antonio Jr.",
-    " Devine Grace A. Bautista",
-    " Rachel M. Bangyod",
-    " Reina Beth S. Sabado",
-    " Cherry Ann Joy A. Lucena",
-    " Reynaldo B. Darang",
-    " Novembereigne D. Ugay",
-    " Amelyn G. Prado",
-    " Angela Mae S. Tomas",
-    " Prince Jerson D. Tomas",
-    " Martin Jan Levy V. Alcantara",
-    " Mark M. Rambac",
-    " Delfhiemae Alpha A. Lonez",
-    " Glydel G. Arcangel",
-    " Francis Klaus E. Imperio",
-    " Mark Lester P. Padua",
-    " Nolly C. Dacumos",
-    " Leny Jewel G. Malaque",
-    " Reymarc R. Acosta",
-    " Kaye Aneth M. Bartolome",
-    " Goldamae D. Estillore",
-    " Blessie Loraine B. Guyo",
-    " Carla Joyce I. Bartolome",
-    " Andrea M. Acob",
-    " Reyliza A. Ramos",
-    " Jaysar R. Matias",
-    " Cristeta S. Damasco",
-    " Mark Jam C. Capistrano",
-    " Jennifer R. Gacad",
-    " Joana Rose C. Garnace",
-    " Alicia Allyson Jonh U. Gaerlan",
-    " Dianne Nyra C. Garcia",
-    " Hannie Mae L. Pablo",
-    " Joey D. Marcos",
-    " Geremy C. Bayang",
-    " Iriz R. Erfe",
-    " Ramon Jr. D. Sanchez",
-    " Sunshine Mae R. Vinluan",
-    " Jojo C. Olonan",
-    " Francis C. Oleta",
-    " Emeterio B. Vicente",
-    " Alvin Rhyan D. Fernandez",
-    " Esther B. Florendo",
-    " Genesis B. Punhagban",
-    " Lemuel P. Rivera",
-    " Dondon T. Dagdag",
-    " Pacito P. Geron",
-    " Reyvilen Pearl D. Esguerra",
-    " Joshua L. Bucasan",
-    " Renalyn S. Refugia",
-    " Bernard R. Milla",
-    " Mary Jane R. Trinidad",
-    " Aldrin N. Damance",
-    " Consuelo P. Dionio",
-    " Danilo Jr. G. Galam",
-    " Jami Joyce T. Carig",
-    " John Eduard U. Bacani",
-    " Hazel Joy A. Pascua",
-    " David D. Estigoy",
-    " Kristine G. Tagalisma",
-    " Marjorie Anne M. Viloria",
-    " Leonida L. Boquing",
-    " Nimfa A. Valdez",
-    " Mayjuleth  Ramos",
-    " Crisologo E. Del Rosario",
-    " Lauro S. Aspiras",
-    " Emma D. Aspiras",
-    " Richmond Bernie T. Estela",
-    " Mike B. Binwag",
-  ];
-
   const [filterType, setFilterType] = useState("All"); // Track filter state
-  const [files, setFiles] = useState([]);
-  const [filesError, setFilesError] = useState("");
-  const fileInputRef = useRef(null);
-  const [dragActive, setDragActive] = useState(false);
-  const mapKey = (f) => `${f.name}__${f.size}__${f.lastModified}`;
-  const addFiles = (incomingList) => {
-    const incoming = Array.from(incomingList || []);
-    if (!incoming.length) return;
-    const cur = new Map(files.map((f) => [mapKey(f), f]));
-    for (const f of incoming) cur.set(mapKey(f), f);
-    setFiles(Array.from(cur.values()));
-    setFilesError("");
-  };
-  const dropStyle = {
-    border: `2px dashed ${filesError ? "#dc3545" : "#999"}`,
-    borderRadius: 12,
-    padding: 16,
-    textAlign: "center",
-    cursor: "pointer",
-    background: dragActive ? "rgba(0,123,255,0.08)" : "#fafafa",
-    transition: "background 120ms ease",
-  };
-  const handleFilesChange = (e) => {
-    addFiles(e.target.files);
-    e.target.value = "";
-  };
 
-  const removeFile = (idx) =>
-    setFiles((prev) => prev.filter((_, i) => i !== idx));
+  // Dropdown lists for the edit modal (same sources as the create form).
+  const [editOptions, setEditOptions] = useState({
+    classification: [],
+    priority: [],
+    origin: ["Internal", "External"],
+    concerned_personnel: [],
+  });
+  useEffect(() => {
+    const loadEditOptions = async () => {
+      try {
+        const [classRes, prioRes, origRes, concernedRes] = await Promise.all([
+          axios.get("/api/dropdown-options?category=classification"),
+          axios.get("/api/dropdown-options?category=priority"),
+          axios.get("/api/dropdown-options?category=origin"),
+          axios.get("/api/dropdown-options?category=concerned_personnel"),
+        ]);
+        setEditOptions({
+          classification: (classRes.data || []).map((o) => o.value),
+          priority: (prioRes.data || []).map((o) => o.value),
+          origin: (origRes.data || []).length
+            ? origRes.data.map((o) => o.value)
+            : ["Internal", "External"],
+          concerned_personnel: (concernedRes.data || []).map((o) => o.value),
+        });
+      } catch (e) {
+        console.error("Failed to load dropdown options for the edit modal:", e);
+      }
+    };
+    loadEditOptions();
+  }, []);
 
-  const onDragOver = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(true);
-  };
-  const onDragEnter = onDragOver;
-  const onDragLeave = (e) => {
-    if (e.currentTarget.contains(e.relatedTarget)) return;
-    setDragActive(false);
-  };
-  const onDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    addFiles(e.dataTransfer.files);
-  };
-  const openFileDialog = () => fileInputRef.current?.click();
-
-  // Function to load records
+  // External documents may be saved without a destination office.
+  const isExternalEdit =
+    String(formData.record_origin || "").trim().toLowerCase() === "external";
+    // Function to load records
   const load = async () => {
     try {
       setLoading(true);
@@ -581,24 +258,118 @@ export default function Dashboard() {
     return () => socket.off("recordUpdated", onUpdated);
   }, []);
 
-  // Handle edit
-  const handleEdit = (record) => {
-    setSelectedRecord(record); // Store the selected record
-    setFormData({
-      control_number: record.control_number,
-      office_requestor: record.office_requestor,
-      description: record.description,
-      classification: record.classification,
-      priority: record.priority,
-      record_origin: record.record_origin,
-      concerned_personnel: record.concerned_personnel,
-      destination_office: record.destination_office,
-      retention_period: normalizeRetention(record.retention_period),
-      current_office: record.current_office || "Unknown Office",
+  // -------------------- Attachments in the edit modal --------------------
+  const editFileKey = (f) => `${f.name}__${f.size}__${f.lastModified}`;
+
+  const addEditFiles = (incomingList) => {
+    const incoming = Array.from(incomingList || []);
+    if (!incoming.length) return;
+    setEditNewFiles((prev) => {
+      const cur = new Map(prev.map((f) => [editFileKey(f), f]));
+      for (const f of incoming) cur.set(editFileKey(f), f);
+      return Array.from(cur.values());
     });
-    setShowModal(true); // Show the modal
+    setEditFilesError("");
   };
 
+  const onEditDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setEditDragActive(true);
+  };
+  const onEditDragLeave = (e) => {
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setEditDragActive(false);
+  };
+  const onEditDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setEditDragActive(false);
+    addEditFiles(e.dataTransfer.files);
+  };
+  const openEditFileDialog = () => editFileInputRef.current?.click();
+  const handleEditFilesChange = (e) => {
+    addEditFiles(e.target.files);
+    e.target.value = "";
+  };
+  const removeEditNewFile = (key) =>
+    setEditNewFiles((prev) => prev.filter((f) => editFileKey(f) !== key));
+
+  // Remove an attachment already stored on the record.
+  const handleRemoveExistingFile = async (fileId) => {
+    if (!fileId || !selectedRecord) return;
+    if (!window.confirm("Remove this attachment? This cannot be undone."))
+      return;
+    try {
+      await axios.delete(`/records/${selectedRecord.id}/files/${fileId}`);
+      setEditFiles((prev) =>
+        prev.filter((f) => String(f.id) !== String(fileId))
+      );
+    } catch (e) {
+      alert(
+        "Failed to remove attachment: " +
+          (e?.response?.data?.error || e.message)
+      );
+    }
+  };
+
+  // Only PDF attachments are accepted, matching the create-record form.
+  const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // matches the server's multer limit
+  const validateEditFiles = () => {
+    for (const file of editNewFiles) {
+      const isPdf =
+        file.type === "application/pdf" ||
+        String(file.name || "").toLowerCase().endsWith(".pdf");
+      if (!isPdf) {
+        setEditFilesError("Only PDF files are allowed.");
+        return false;
+      }
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        setEditFilesError(`"${file.name}" is larger than the 10 MB limit.`);
+        return false;
+      }
+    }
+    setEditFilesError("");
+    return true;
+  };
+
+  const editDropStyle = {
+    border: `2px dashed ${editFilesError ? "#dc3545" : "#999"}`,
+    borderRadius: 12,
+    padding: 16,
+    textAlign: "center",
+    cursor: "pointer",
+    background: editDragActive ? "rgba(0,123,255,0.08)" : "#fafafa",
+    transition: "background 120ms ease",
+  };
+
+  // Handle edit — every record field is loaded into the modal.
+  const handleEdit = async (record) => {
+    setSelectedRecord(record); // Store the selected record
+    setFormData({
+      control_number: record.control_number || "",
+      office_requestor: record.office_requestor || "",
+      description: record.description || "",
+      classification: record.classification || "",
+      priority: record.priority || "",
+      record_origin: record.record_origin || "",
+      concerned_personnel: record.concerned_personnel || "",
+      destination_office: record.destination_office || "",
+      retention_period: normalizeRetention(record.retention_period),
+    });
+    setEditNewFiles([]);
+    setEditFilesError("");
+    setEditDragActive(false);
+    setEditFiles(record.files || []);
+    setShowModal(true); // Show the modal
+    // Load the record's stored attachments (with file ids, so they can be removed).
+    try {
+      const res = await axios.get(`/records/${record.id}`);
+      if (Array.isArray(res.data?.files)) setEditFiles(res.data.files);
+    } catch (e) {
+      console.error("Error loading record attachments:", e);
+    }
+  };
   // Handle update form field change
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -609,75 +380,76 @@ export default function Dashboard() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    // Validate required fields before updating
-    if (!formData.destination_office || String(formData.destination_office).trim() === '') {
-      alert('Destination Office is required.');
+    const requiredFields = {
+      control_number: formData.control_number,
+      office_requestor: formData.office_requestor,
+      description: formData.description,
+      classification: formData.classification,
+      priority: formData.priority,
+      record_origin: formData.record_origin,
+      retention_period: formData.retention_period,
+    };
+    // Destination Office is optional for External documents.
+    if (!isExternalEdit) {
+      requiredFields.destination_office = formData.destination_office;
+    }
+    const missingFields = Object.entries(requiredFields)
+      .filter(([, v]) => !v || String(v).trim() === "")
+      .map(([k]) => k.replace(/_/g, " "));
+    if (missingFields.length > 0) {
+      alert(`Please fill in all required fields: ${missingFields.join(", ")}`);
       return;
     }
-    if (!formData.concerned_personnel || String(formData.concerned_personnel).trim() === '') {
-      alert('Concerned Personnel is required.');
-      return;
-    }
-
-    // Creating FormData instance
+    const retentionValue =
+      formData.retention_period === "Permanent"
+        ? "Permanent"
+        : formData.retention_period + " Years";
     const formDataToSend = new FormData();
-
-    // Append the fields that are being updated
-    formDataToSend.append("concerned_personnel", formData.concerned_personnel);
-    formDataToSend.append("destination_office", formData.destination_office);
-    formDataToSend.append("retention_period", formData.retention_period);
-    formDataToSend.append("remarks", formData.remarks || "No remarks");
-    formDataToSend.append(
-      "current_office",
-      formData.current_office || "Unknown Office"
-    );
-    // Append the files to FormData if there are any
-    files.forEach((file) => {
-      formDataToSend.append("files", file);
+    formDataToSend.append("retention_period", retentionValue);
+    // Send the remaining editable fields so the server can update them too.
+    const editableFields = [
+      "control_number",
+      "office_requestor",
+      "description",
+      "classification",
+      "priority",
+      "record_origin",
+      "concerned_personnel",
+      "destination_office",
+    ];
+    editableFields.forEach((key) => {
+      const v = formData[key];
+      if (v !== undefined && v !== null) formDataToSend.append(key, v);
     });
-
-    // Log the FormData object to check if data is appended correctly
-    console.log("FormData to Send:", formDataToSend);
-
+    // Attachments chosen in the modal are uploaded together with the update.
+    if (!validateEditFiles()) return;
+    editNewFiles.forEach((file) => formDataToSend.append("files", file));
     try {
-      // Sending the PUT request to the backend
-      await axios.put(`/records/${selectedRecord.id}`, formDataToSend, {
-        headers: {
-          "Content-Type": "multipart/form-data", // Ensure content type is multipart/form-data
-        },
-      });
-
+      await axios.put("/records/" + selectedRecord.id, formDataToSend);
       alert("Record updated successfully!");
       setShowModal(false);
       load(); // Reload the records to reflect the updated data
-    } catch (e) {
-      console.error(
-        "Error response from backend:",
-        e.response?.data || e.message
-      );
-      alert(
-        "Failed to update record: " + (e.response?.data?.message || e.message)
-      );
+    } catch (err) {
+      console.error("Error response from backend:", err.response && err.response.data ? err.response.data : err.message);
+      alert("Failed to update record: " + (err.response && err.response.data && err.response.data.message ? err.response.data.message : err.message));
     }
   };
-
   // Handle delete
-  const handleDelete = async (r) => {
-    if (!r.id) return alert("Cannot delete this record.");
-    if (!window.confirm(`Delete "${r.control_number}"? This cannot be undone.`))
-      return;
-    try {
-      setDeletingId(r.id);
-      await axios.delete(`/records/${r.id}`);
-      setRowsRaw((prev) => prev.filter((x) => x.id !== r.id));
-    } catch (e) {
-      console.error(e);
-      alert("Failed to delete record.");
-    } finally {
-      setDeletingId(null);
-    }
-  };
+  // const handleDelete = async (r) => {
+  //   if (!r.id) return alert("Cannot delete this record.");
+  //   if (!window.confirm(`Delete "${r.control_number}"? This cannot be undone.`))
+  //     return;
+  //   try {
+  //     setDeletingId(r.id);
+  //     await axios.delete(`/records/${r.id}`);
+  //     setRowsRaw((prev) => prev.filter((x) => x.id !== r.id));
+  //   } catch (e) {
+  //     console.error(e);
+  //     alert("Failed to delete record.");
+  //   } finally {
+  //     setDeletingId(null);
+  //   }
+  // };
 
  const records = useMemo(() => {
     const map = new Map();
@@ -690,6 +462,7 @@ export default function Dashboard() {
           classification: r.classification || "",
           priority: r.priority || "Normal",
           office_requestor: r.office_requestor || "",
+          concerned_personnel: r.concerned_personnel || "",
           destination_office: r.destination_office || "",
           record_origin: r.record_origin || "Unknown",
           created_at: r.created_at || null,
@@ -724,13 +497,19 @@ export default function Dashboard() {
     const toT = toDate ? new Date(toDate).setHours(23, 59, 59, 999) : null;
 
     return records.filter((r) => {
-      // Filter by office: documents currently at, destined for, or requested by this office
+      // ADMIN DASHBOARD RULE: every record shows here — regardless of
+      // destination office — until it has been UPDATED (QR code generated).
+      // Once updated, the record leaves the dashboard (still visible in
+      // All Records). A specific office filter narrows by current/dest office.
+      const isUpdated = r.status === "Updated";
+      if (isUpdated) return false;
       if (office !== "All") {
         const o = office.trim().toLowerCase();
         const dest = String(r.destination_office || "").trim().toLowerCase();
         const cur = String(r.current_office || "").trim().toLowerCase();
-        const req = String(r.office_requestor || "").trim().toLowerCase();
-        if (dest !== o && cur !== o && req !== o) return false;
+        if (o !== "" && o !== "all") {
+          if (dest !== o && cur !== o) return false;
+        }
       }
 
       // Filter by date range (from - to, inclusive)
@@ -750,9 +529,18 @@ export default function Dashboard() {
       // Filter by update status (Updated = has QR code)
       if (statusFilter !== "All" && r.status !== statusFilter) return false;
 
+      // Search by control number, title, or description
+      if (searchTerm.trim()) {
+        const q = searchTerm.trim().toLowerCase();
+        const cn = String(r.control_number || "").toLowerCase();
+        const desc = String(r.description || "").toLowerCase();
+        const origin = String(r.record_origin || "").toLowerCase();
+        if (!cn.includes(q) && !desc.includes(q) && !origin.includes(q)) return false;
+      }
+
       return true;
     });
-  }, [records, office, fromDate, toDate, filterType, statusFilter]);
+  }, [records, office, fromDate, toDate, filterType, statusFilter, searchTerm]);
 
   const officeCount = useMemo(() => {
     const counts = {};
@@ -763,6 +551,59 @@ export default function Dashboard() {
     });
     return counts;
   }, [records]);
+
+  // Total records + per-month trend for the overview visual
+  const totalRecords = records.length;
+  const internalCount = records.filter(
+    (r) => String(r.record_origin || "").toLowerCase().includes("internal")
+  ).length;
+  const externalCount = totalRecords - internalCount;
+  const internalPct =
+    totalRecords > 0 ? Math.round((internalCount / totalRecords) * 100) : 0;
+  const externalPct = totalRecords > 0 ? 100 - internalPct : 0;
+
+  // Month-over-month growth (delta chip on the Total Records card)
+  const monthKeyOf = (d) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const nowDate = new Date();
+  const thisMonthKey = monthKeyOf(nowDate);
+  const prevMonthKey = monthKeyOf(
+    new Date(nowDate.getFullYear(), nowDate.getMonth() - 1, 1)
+  );
+  let thisMonthCount = 0;
+  let lastMonthCount = 0;
+  records.forEach((r) => {
+    const d = r.created_at ? new Date(r.created_at) : null;
+    if (!d || isNaN(d)) return;
+    const k = monthKeyOf(d);
+    if (k === thisMonthKey) thisMonthCount += 1;
+    else if (k === prevMonthKey) lastMonthCount += 1;
+  });
+  const trendDelta =
+    lastMonthCount > 0
+      ? Math.round(((thisMonthCount - lastMonthCount) / lastMonthCount) * 100)
+      : null;
+
+  // Last 6 months, zero-filled, so the sparkline always has a readable shape
+  const recordsTrend = useMemo(() => {
+    const months = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push(
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+      );
+    }
+    const byMonth = Object.fromEntries(months.map((m) => [m, 0]));
+    records.forEach((record) => {
+      const d = record.created_at ? new Date(record.created_at) : null;
+      if (!d || isNaN(d)) return;
+      const key = monthKeyOf(d);
+      if (key in byMonth) byMonth[key] += 1;
+    });
+    return months.map((m) => ({ month: m, count: byMonth[m] }));
+  }, [records]);
+
   const handleViewQR = (r) => {
     if (!r.qrcode_path) return alert("QR code not available for this record.");
 
@@ -797,6 +638,12 @@ export default function Dashboard() {
       console.error("Error loading record details:", e);
     }
 
+  };
+
+  // Open a record from the Operations Stream by id
+  const handleOpenRecordById = (id) => {
+    const rec = records.find((r) => r.id === id);
+    if (rec) handleViewDocument(rec);
   };
 
   // -------------------- Multi-Office Forward (Admin) --------------------
@@ -841,11 +688,23 @@ export default function Dashboard() {
 
     setForwardingId(record.id);
     try {
+      // Upload signed document first if present
+      const signedFile = signedFiles[record.id];
+      if (signedFile) {
+        const fd = new FormData();
+        fd.append("signed_file", signedFile);
+        await axios.post(`/api/records/${record.id}/signed-doc`, fd, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+      }
+      // Forward with include_slip flag
       await axios.put(`/records/forward/${record.id}`, {
         destination_offices: selected,
+        include_slip: includeSlip[record.id] !== false, // default true
       });
       alert(`Record forwarded to ${selected.join(", ")}.`);
       setSelectedOffices((prev) => ({ ...prev, [record.id]: [] }));
+      setSignedFiles((prev) => { const n = {...prev}; delete n[record.id]; return n; });
       load();
     } catch (err) {
       const msg = err?.response?.data?.error || "Failed to forward record.";
@@ -857,9 +716,17 @@ export default function Dashboard() {
   };
 
   const chartData = useMemo(() => {
-    return Object.keys(officeCount).map((office) => ({
+    const entries = Object.keys(officeCount).map((office) => ({
       office: office,
       records: officeCount[office],
+    }));
+    // Tallest office first so the line reads as a ranking, then shorten long names
+    entries.sort((a, b) => b.records - a.records);
+    const MAX_LABEL = 22;
+    return entries.map((e) => ({
+      ...e,
+      office:
+        e.office.length > MAX_LABEL ? e.office.slice(0, MAX_LABEL - 1) + "…" : e.office,
     }));
   }, [officeCount]);
   const closeModal = () => {
@@ -932,9 +799,22 @@ export default function Dashboard() {
       <div className="content-wrapper">
         <Navbar />
         <div className="container-fluid">
+          {/* Sticky header: filters + chart */}
+          <div className="dashboard-sticky-header">
           <div className="dashboard-grid">
 {/* FILTER */}
           <div className="filter-container">
+            {/* Search by control number / title / description */}
+            <div className="d-flex align-items-center filter-item" style={{ gridColumn: '1 / -1', marginBottom: '4px' }}>
+              <input
+                type="text"
+                className="form-control form-control-sm"
+                placeholder="Search by control number, title, or description..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{ fontSize: '0.85rem' }}
+              />
+            </div>
             <div className="d-flex align-items-center filter-item">
               <label htmlFor="recordFilter" className="form-label filter-icon-label">
                 <FaFileAlt className="filter-icon" />
@@ -1007,33 +887,268 @@ export default function Dashboard() {
               />
             </div>
             <div className="showing">
-            <div className="text-muted small">
-              Showing <strong>{filtered.length}</strong> of {rowsRaw.length}
-            </div>
+            {/* <div className="text-muted small">
+              Showing <strong>{filtered.length}</strong> of {records.length}
+            </div> */}
           </div>
           </div>
 
 
           {/* Records Overview Chart */}
-          <div className="chart-container">
-            <h5 className="mb-4">Office Records Overview</h5>
+          <div className="d-flex align-items-stretch gap-3 flex-wrap">
+            {/* Total Records visual card */}
+            <div
+              className="border rounded-3 p-3"
+              style={{
+                background: "linear-gradient(135deg, #35804eff 0%, #1a3c24 100%)",
+                color: "#fff",
+                minWidth: "230px",
+                flex: "0 0 230px",
+                height: "250px",
+                display: "flex",
+                flexDirection: "column",
+                boxShadow: "0 2px 12px rgba(26,60,36,0.35)",
+                position: "relative",
+                overflow: "hidden",
+              }}
+            >
+              {/* Soft glow accent */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: -34,
+                  right: -34,
+                  width: 120,
+                  height: 120,
+                  borderRadius: "50%",
+                  background: "rgba(255,255,255,0.07)",
+                  pointerEvents: "none",
+                }}
+              />
+              {/* Header: icon chip + label + this-month pill */}
+              <div
+                className="d-flex align-items-center justify-content-between mb-1"
+                style={{ position: "relative" }}
+              >
+                <div className="d-flex align-items-center gap-2">
+                  <span
+                    style={{
+                      width: 26,
+                      height: 26,
+                      borderRadius: 8,
+                      background: "rgba(255,255,255,0.15)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <RiHomeOfficeFill size={14} />
+                  </span>
+                  <span style={{ fontWeight: 600, fontSize: "0.78rem", opacity: 0.95 }}>
+                    Total Records
+                  </span>
+                </div>
+                {thisMonthCount > 0 && (
+                  <span
+                    style={{
+                      fontSize: "0.6rem",
+                      fontWeight: 700,
+                      background: "rgba(255,255,255,0.18)",
+                      padding: "2px 8px",
+                      borderRadius: 999,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    +{thisMonthCount} this month
+                  </span>
+                )}
+              </div>
+              {/* Big count + month-over-month delta */}
+              <div
+                className="d-flex align-items-end gap-2"
+                style={{ position: "relative" }}
+              >
+                <div style={{ fontWeight: 800, fontSize: "2.1rem", lineHeight: 1 }}>
+                  {totalRecords.toLocaleString()}
+                </div>
+                {trendDelta !== null && (
+                  <div
+                    style={{
+                      fontSize: "0.66rem",
+                      fontWeight: 600,
+                      color: trendDelta >= 0 ? "#7bf1a8" : "#ffb4b4",
+                      paddingBottom: 4,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {trendDelta >= 0 ? "▲" : "▼"} {Math.abs(trendDelta)}% vs last
+                    month
+                  </div>
+                )}
+              </div>
+              {recordsTrend.length > 0 && (
+                <div style={{ marginTop: 6, marginLeft: -12, marginRight: -12 }}>
+                  <ResponsiveContainer width="100%" height={46}>
+                    <AreaChart
+                      data={recordsTrend}
+                      margin={{ top: 4, right: 0, bottom: 0, left: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#a8e6c0" stopOpacity={0.85} />
+                          <stop offset="100%" stopColor="#a8e6c0" stopOpacity={0.05} />
+                        </linearGradient>
+                      </defs>
+                      <Tooltip
+                        formatter={(v) => [`${v} record(s)`, "Created"]}
+                        labelFormatter={(m) => {
+                          const [y, mo] = String(m).split("-");
+                          return new Date(y, mo - 1, 1).toLocaleString(undefined, {
+                            month: "short",
+                            year: "numeric",
+                          });
+                        }}
+                        contentStyle={{
+                          background: "#fff",
+                          color: "#1a3c24",
+                          border: "none",
+                          borderRadius: "6px",
+                          fontSize: "0.75rem",
+                        }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="count"
+                        stroke="#a8e6c0"
+                        strokeWidth={2}
+                        fill="url(#trendFill)"
+                        dot={{ r: 2, fill: "#a8e6c0", strokeWidth: 0 }}
+                        activeDot={{ r: 4 }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
 
-            {/* Bar Chart for Records Per Office */}
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="office" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="records" fill="#35804eff" />
-              </BarChart>
-            </ResponsiveContainer>
+              {/* Internal vs External share bar */}
+              <div
+                style={{
+                  height: 6,
+                  borderRadius: 999,
+                  overflow: "hidden",
+                  display: "flex",
+                  background: "rgba(255,255,255,0.15)",
+                  marginTop: 4,
+                  flexShrink: 0,
+                }}
+              >
+                <div
+                  style={{
+                    width: `${internalPct}%`,
+                    background: "#4ade80",
+                    transition: "width 0.4s ease",
+                  }}
+                />
+                <div
+                  style={{
+                    width: `${externalPct}%`,
+                    background: "#a78bfa",
+                    transition: "width 0.4s ease",
+                  }}
+                />
+              </div>
+
+              {/* Internal / External breakdown with dots + percentages */}
+              <div
+                className="d-flex justify-content-between gap-2 pt-2 mt-auto"
+                style={{ borderTop: "1px solid rgba(255,255,255,0.25)" }}
+              >
+                <div className="d-flex align-items-center gap-2 flex-fill">
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: "#4ade80",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div>
+                    <div style={{ fontSize: "0.62rem", opacity: 0.85, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                      Internal
+                    </div>
+                    <div style={{ fontWeight: 700, fontSize: "0.95rem", lineHeight: 1.2 }}>
+                      {internalCount.toLocaleString()}
+                      <span style={{ fontSize: "0.62rem", fontWeight: 500, opacity: 0.8, marginLeft: 4 }}>
+                        {internalPct}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    width: "1px",
+                    background: "rgba(255,255,255,0.25)",
+                  }}
+                />
+                <div className="d-flex align-items-center gap-2 flex-fill">
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: "#a78bfa",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div>
+                    <div style={{ fontSize: "0.62rem", opacity: 0.85, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                      External
+                    </div>
+                    <div style={{ fontWeight: 700, fontSize: "0.95rem", lineHeight: 1.2 }}>
+                      {externalCount.toLocaleString()}
+                      <span style={{ fontSize: "0.62rem", fontWeight: 500, opacity: 0.8, marginLeft: 4 }}>
+                        {externalPct}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Line Chart for Records Per Office */}
+            <div className="chart-container" style={{ flex: "1 1 380px", minWidth: 0, height: "250px", overflow: "hidden" }}>
+              <h5 className="mb-4">Office Records Overview</h5>
+              <ResponsiveContainer width="100%" height={165}>
+                <LineChart data={chartData} margin={{ top: 5, right: 16, bottom: 0, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.5} />
+                  <XAxis dataKey="office" tick={{ fontSize: 11 }} interval={0} angle={-15} textAnchor="end" height={38} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={28} />
+                  <Tooltip
+                    formatter={(v) => [`${v} record(s)`, "Records"]}
+                    contentStyle={{ borderRadius: "6px", fontSize: "0.75rem" }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: "0.75rem" }} />
+                  <Line
+                    type="monotone"
+                    dataKey="records"
+                    stroke="#35804eff"
+                    strokeWidth={2.5}
+                    dot={{ r: 4, fill: "#35804eff", strokeWidth: 0 }}
+                    activeDot={{ r: 6 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Operations Stream: live activity feed + task queue */}
+            <div style={{ flex: "1 1 300px", minWidth: 0, height: "250px" }}>
+              <OperationsStream onOpenRecord={handleOpenRecordById} />
+            </div>
           </div>
           </div>
-          
-          
-          
+          </div>
 
           {error && <div className="alert alert-danger">{error}</div>}
           {loading && <div className="status">Loading…</div>}
@@ -1043,30 +1158,32 @@ export default function Dashboard() {
               paginatedRecords.map((record) => (
                 <div key={record.id} className={`card record-card ${isNew(record) ? 'record-card-new' : ''}`}>
                   <div className="card-header">
-                    <p>{record.control_number || "No Control Number"}</p>
-                    <p>{record.record_origin || "Untitled"}</p>
-                    <div className="d-flex gap-1 align-items-center">
-                      {isNew(record) && (
-                        <span className="badge badge-new">NEW</span>
-                      )}
-                      {/* Display status */}
-                      <span
-                        className={`badge ${
-                          record.status === "Updated"
-                            ? "badge-success"
-                            : "badge-warning"
-                        }`}
-                      >
-                        {record.status}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <p style={{ fontWeight: 700, fontSize: '1rem', margin: 0 }}>{record.control_number || "No Control Number"}</p>
+                      <span className="badge" style={{ background: record.status === "Updated" ? '#28a745' : '#ffc107', color: record.status === "Updated" ? '#fff' : '#333', fontSize: '0.65rem', padding: '2px 7px', borderRadius: '12px', whiteSpace: 'nowrap' }}>
+                        {record.status === "Updated" ? "✅ Updated" : "⏳ Not Updated"}
                       </span>
-                      {/* Pending with President badge */}
+                      <span className="badge" style={{ background: (record.record_origin || '').toLowerCase().includes('internal') ? '#1a7a3a' : '#6c5ce7', color: '#fff', fontSize: '0.65rem', padding: '2px 7px', borderRadius: '12px', whiteSpace: 'nowrap' }}>
+                        {record.record_origin || "Untitled"}
+                      </span>
+                      {isNew(record) && (
+                        <span className="badge badge-new" style={{ marginLeft: '2px' }}>NEW</span>
+                      )}
+                    </div>
+                    {(record.description || record.title) && (
+                      <p style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1a3c24', marginBottom: '2px', marginTop: '4px' }}>
+                        {record.description || record.title}
+                      </p>
+                    )}
+                    <div className="d-flex gap-1 align-items-center">
+                      {/* Returned-from-President badge: only show after a forward FROM the President */}
                       {(() => {
-                        const sentToPresident = String(record.destination_office || '').toLowerCase().includes('president');
-                        const inRecords = String(record.current_office || '').toLowerCase().includes('records');
-                        if (sentToPresident && inRecords) {
+                        const hasForwardedFromPresident =
+                          record.forwarded_at &&
+                          String(record.forwarded_at).length > 0 &&
+                          String(record.destination_office || '').toLowerCase().includes('records');
+                        if (hasForwardedFromPresident) {
                           return <span className="badge" style={{ background: '#17a2b8', color: '#fff', marginLeft: '4px' }}>✅ Returned from President</span>;
-                        } else if (sentToPresident && !inRecords) {
-                          return <span className="badge" style={{ background: '#6c757d', color: '#fff', marginLeft: '4px' }}>⏳ Pending with President</span>;
                         }
                         return null;
                       })()}
@@ -1076,12 +1193,9 @@ export default function Dashboard() {
                     <p>
                       <strong>Office Requestor:</strong> {record.office_requestor || "—"}
                     </p>
-                    <p>
-                      <strong>Classification:</strong> {record.classification}
-                    </p>
-                    <p>
+                    {/* <p>
                       <strong>Priority:</strong> {record.priority}
-                    </p>
+                    </p> */}
                     <p>
                       <strong>Date Created:</strong>{" "}
                       {fmtDateTime(record.created_at)}
@@ -1114,23 +1228,20 @@ export default function Dashboard() {
                     <button
                       className="btn btn-outline-success"
                       onClick={() => handleEdit(record)}
-                      title={record.current_office !== "Records Management Unit" ? "Cannot edit: document is not in your office" : "Edit Record"}
-                      disabled={
-                        norm(record.current_office) !== norm("Records Management Unit") &&
-                        norm(record.current_office) !== "unknown office"
-                      }
+                      title="Edit Record"
                     >
                       <FaPencilAlt />
                     </button>
-                    <button
+                    
+                    {/* <button
                       className="btn btn-outline-danger"
                       disabled={deletingId === record.id}
                       onClick={() => handleDelete(record)}
                     >
                      <FaTrashAlt />
-                    </button>
+                    </button> */}
                   </div>
-
+<br></br>
                   {/* Forward section — type-ahead office selector */}
                   <div style={{ padding: '8px 12px', borderTop: '1px solid #e9ecef', background: '#f8f9fa' }}>
                     <div className="d-flex flex-wrap gap-1 mb-1">
@@ -1168,8 +1279,37 @@ export default function Dashboard() {
                         </div>
                       )}
                     </div>
+                    {/* Routing slip toggle + signed doc upload — President only */}
+                    {myOffice && myOffice.toLowerCase().includes('president') && (
+                      <>
+                        <div className="form-check form-switch mt-2" style={{ fontSize: '0.8rem' }}>
+                          <input
+                            className="form-check-input"
+                            type="checkbox"
+                            role="switch"
+                            id={`slip-${record.id}`}
+                            checked={includeSlip[record.id] !== false}
+                            onChange={(e) => setIncludeSlip((prev) => ({ ...prev, [record.id]: e.target.checked }))}
+                          />
+                          <label className="form-check-label" htmlFor={`slip-${record.id}`}>📎 Attach Routing Slip</label>
+                        </div>
+                        {/* Signed document upload */}
+                        <div className="mt-1" style={{ fontSize: '0.8rem' }}>
+                          <label className="form-label text-muted mb-0">📝 Upload Signed Document (optional)</label>
+                          <input
+                            type="file"
+                            className="form-control form-control-sm"
+                            accept="application/pdf"
+                            onChange={(e) => setSignedFiles((prev) => ({ ...prev, [record.id]: e.target.files[0] || null }))}
+                          />
+                          {signedFiles[record.id] && (
+                            <div className="text-success small mt-1">✅ {signedFiles[record.id].name}</div>
+                          )}
+                        </div>
+                      </>
+                    )}
                     <button
-                      className="btn btn-sm btn-primary mt-1 w-100"
+                      className="btn btn-sm btn-primary mt-2 w-100"
                       disabled={(selectedOffices[record.id] || []).length === 0 || forwardingId === record.id}
                       onClick={() => handleForward(record)}
                     >
@@ -1243,217 +1383,238 @@ export default function Dashboard() {
             </div>
           )}
           {/* Edit Modal */}
-
           {showModal && selectedRecord && (
             <div className="modal-overlay" onClick={() => setShowModal(false)}>
-              {/* Modal Dialog: Prevent backdrop click when interacting with the form */}
               <div
-                className="modal-content"
+                className="modal-content edit-record-modal"
                 onClick={(e) => e.stopPropagation()} // Prevents closing modal when clicking inside
               >
                 <h2>Edit Record</h2>
-                <form onSubmit={handleSubmit}>
-                  <div className="form-group">
-                    <label>Control Number</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      value={formData.control_number}
-                      disabled
-                    />
-                  </div>
 
-                  <div className="form-group">
-                    <label>Office/Requestor</label>
-                    <input
-                      type="text"
-                      className="form-control"
+                <div className="text-muted small mb-3 text-center">
+                  Status: {selectedRecord.status || "—"} · Current office:{" "}
+                  {selectedRecord.current_office || "—"}
+                </div>
+
+                <form onSubmit={handleSubmit}>
+                  <div className="row g-3">
+                    <EditField
+                      label="Control No."
+                      name="control_number"
+                      value={formData.control_number}
+                      onChange={handleChange}
+                      placeholder="e.g., 261001-2487"
+                      required
+                    />
+                    <EditField
+                      label="Office/Requestor"
                       name="office_requestor"
                       value={formData.office_requestor}
                       onChange={handleChange}
-                      // required
-                      disabled
+                      options={DESTINATION_OFFICES}
+                      placeholder="Office or requestor"
+                      required
                     />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Classification</label>
-                    <select
-                      className="form-control"
+                    <EditField
+                      col="col-12"
+                      label="Title and Description"
+                      name="description"
+                      type="textarea"
+                      rows={3}
+                      value={formData.description}
+                      onChange={handleChange}
+                      required
+                    />
+                    <EditField
+                      label="Classification"
                       name="classification"
                       value={formData.classification}
                       onChange={handleChange}
-                      // required
-                      disabled
-                    >
-                      {CLASSIFICATION_OPTIONS.map((option, index) => (
-                        <option key={index} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Priority</label>
-                    <select
-                      className="form-control"
+                      options={editOptions.classification}
+                      required
+                    />
+                    <EditField
+                      label="Priority"
                       name="priority"
                       value={formData.priority}
                       onChange={handleChange}
-                      // required
-                      disabled
-                    >
-                      {PRIORITY_OPTIONS.map((option, index) => (
-                        <option key={index} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <AutocompleteInput
+                      options={editOptions.priority}
+                      required
+                    />
+                    <div className="col-md-6">
+                      <label className="form-label fw-semibold">Record Origin *</label>
+                      <select
+                        className="form-control"
+                        name="record_origin"
+                        value={formData.record_origin || ""}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="">Select origin…</option>
+                        {editOptions.origin.map((origin) => (
+                          <option key={origin} value={origin}>
+                            {origin}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <EditField
                       label="Concerned Personnel"
                       name="concerned_personnel"
                       value={formData.concerned_personnel}
                       onChange={handleChange}
-                      options={CONCERNED_PERSONNEL}
+                      options={editOptions.concerned_personnel}
                       placeholder="Select Concerned Personnel"
                     />
-                  </div>
-                  <div className="form-group">
-                    <label>Destination Office</label>
-                    <select
-                      className="form-control"
+                    <EditField
+                      label={
+                        isExternalEdit
+                          ? "Destination Office (optional)"
+                          : "Destination Office"
+                      }
                       name="destination_office"
                       value={formData.destination_office}
                       onChange={handleChange}
-                      required
-                    >
-                      {DESTINATION_OFFICES.map((option, index) => (
-                        <option key={index} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Retention Period</label>
-                    <select
-                      className="form-control"
-                      name="retention_period"
-                      value={formData.retention_period || "1"} // Ensure this is always a valid value
-                      onChange={handleChange}
-                      required
-                    >
-                      {RETENTION_OPTIONS.map((option, index) => (
-                        <option key={index} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Description</label>
-                    <textarea
-                      className="form-control"
-                      name="description"
-                      value={formData.description}
-                      onChange={handleChange}
-                      // required
-                      disabled
+                      options={DESTINATION_OFFICES}
+                      placeholder={
+                        isExternalEdit
+                          ? "Optional — select or type an office"
+                          : "Select Destination Office"
+                      }
+                      required={!isExternalEdit}
                     />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Remarks</label>
-                    <textarea
-                      className="form-control"
-                      name="remarks"
-                      value={formData.remarks}
-                      onChange={handleChange} // Handles updating form data
-                      rows={4} // Set number of rows for the textarea
-                      placeholder="Add remarks here..."
-                    />
-                  </div>
-                  {/* Attachments */}
-                  <div className="col-12">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      multiple
-                      className="d-none"
-                      onChange={handleFilesChange}
-                      accept="application/pdf"
-                    />
-                    <div
-                      style={dropStyle}
-                      onClick={openFileDialog}
-                      onDragOver={onDragOver}
-                      onDragEnter={onDragEnter}
-                      onDragLeave={onDragLeave}
-                      onDrop={onDrop}
-                    >
-                      <div className="mb-1 fw-semibold">
-                        Drag & drop files here or click to browse
+                    <div className="col-md-6">
+                      <label className="form-label fw-semibold">
+                        Retention Period *
+                      </label>
+                      <select
+                        className="form-control"
+                        name="retention_period"
+                        value={formData.retention_period || "1"}
+                        onChange={handleChange}
+                        required
+                      >
+                        {RETENTION_OPTIONS.map((option, index) => (
+                          <option key={index} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {/* Attachments — existing files can be removed, new PDFs uploaded */}
+                    <div className="col-12">
+                      <label className="form-label fw-semibold">Attachments</label>
+                      {editFiles.length > 0 && (
+                        <ul className="list-unstyled mt-1 mb-2">
+                          {editFiles.map((f, idx) => (
+                            <li
+                              key={f.id || f.path || idx}
+                              className="d-flex justify-content-between align-items-center border-bottom py-1"
+                            >
+                              <span className="text-truncate me-2" style={{ maxWidth: "78%" }}>
+                                <FaFileAlt className="me-1" />
+                                {f.name || String(f.path || "").split("/").pop()}
+                              </span>
+                              {f.id ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-danger"
+                                  title="Remove attachment"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveExistingFile(f.id);
+                                  }}
+                                >
+                                  <FaTrash />
+                                </button>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <input
+                        ref={editFileInputRef}
+                        type="file"
+                        multiple
+                        className="d-none"
+                        onChange={handleEditFilesChange}
+                        accept="application/pdf"
+                      />
+                      <div
+                        style={editDropStyle}
+                        onClick={openEditFileDialog}
+                        onDragOver={onEditDragOver}
+                        onDragEnter={onEditDragOver}
+                        onDragLeave={onEditDragLeave}
+                        onDrop={onEditDrop}
+                      >
+                        <div className="mb-1 fw-semibold">
+                          Drag & drop files here or click to browse
+                        </div>
+                        <div className="text-muted small">
+                          PDF attachments (optional) — files already attached stay
+                          unless you remove them.
+                        </div>
                       </div>
-                      <div className="text-muted small">
-                        At least one PDF file required
+                      {editFilesError && (
+                        <div className="invalid-feedback d-block">
+                          {editFilesError}
+                        </div>
+                      )}
+                      {editNewFiles.length > 0 && (
+                        <ul className="list-unstyled mt-2 mb-0">
+                          {editNewFiles.map((f) => (
+                            <li
+                              key={editFileKey(f)}
+                              className="d-flex justify-content-between align-items-center"
+                            >
+                              <span className="text-truncate me-2" style={{ maxWidth: "78%" }}>
+                                {f.name} ({Math.round(f.size / 1024)} KB)
+                              </span>
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-danger"
+                                title="Remove file"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeEditNewFile(editFileKey(f));
+                                }}
+                              >
+                                <FaTrash />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <div className="text-muted small mt-1">
+                        Max 10 MB per file.
                       </div>
                     </div>
-                    {filesError && (
-                      <div className="invalid-feedback d-block">
-                        {filesError}
-                      </div>
-                    )}
-                    {files.length > 0 && (
-                      <ul className="list-unstyled mt-2">
-                        {files.map((f, idx) => (
-                          <li
-                            key={mapKey(f)}
-                            className="d-flex justify-content-between align-items-center"
-                          >
-                            <span>
-                              {f.name} ({Math.round(f.size / 1024)} KB)
-                            </span>
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-outline-danger"
-                              onClick={() => removeFile(idx)}
-                            >
-                              Remove
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
                   </div>
 
-                  <br />
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    onClick={(e) => e.stopPropagation()} // Prevent closing modal on form submit
-                  >
-                    Update Record
-                  </button>
-
-                  <button
-                    className="btn btn-secondary"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowModal(false); // Close modal when close button is clicked
-                    }}
-                  >
-                    Close
-                  </button>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 18 }}>
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      onClick={(e) => e.stopPropagation()} // Prevent closing modal on form submit
+                    >
+                      Update Record
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowModal(false); // Close modal when close button is clicked
+                      }}
+                    >
+                      Close
+                    </button>
+                  </div>
                 </form>
               </div>
             </div>
           )}
-
           {/* Document Detail Modal — PDF + Routing Slip */}
           {showDetail && viewRecord && (
             <div className="modal-overlay" onClick={() => setShowDetail(false)}>
@@ -1471,7 +1632,7 @@ export default function Dashboard() {
                       {viewRecord.status === 'Updated' ? '✅ Updated' : '⚠️ Not Updated'}
                     </span>
                     <button className="btn btn-sm btn-outline-secondary" onClick={() => setShowDetail(false)}>✕ Close</button>
-                  </div>
+                  </div> 
                 </div>
 
                 <div className="document-detail-info mb-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.88rem', background: '#f8f9fa', padding: '12px', borderRadius: '8px' }}>
@@ -1497,19 +1658,60 @@ export default function Dashboard() {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '70vh', overflow: 'auto' }}>
                   {(() => {
-                    // If a merged PDF or routing slip file exists, it means the President has processed it
-                    // The routing slip is only created when the President forwards the document back
-                    const mergedFile = detailFiles.find(f => String(f.name || '').toLowerCase().includes('merged'));
-                    const slipFile = detailFiles.find(f => String(f.name || '').toLowerCase().includes('routing') && String(f.name || '').toLowerCase().endsWith('.pdf'));
+                    // Only show routing slip / merged files when the document has been forwarded
+                    // back to the Records Management Unit. While the doc is still with another
+                    // office (e.g. President), the slip must stay hidden from the admin.
+                    const docIsHere = norm(viewRecord?.current_office || '') === norm(myOffice);
+                    const mergedFile = docIsHere ? detailFiles.find(f => String(f.name || '').toLowerCase().includes('merged')) : null;
+                    const slipFile = docIsHere ? detailFiles.find(f => String(f.name || '').toLowerCase().includes('routing') && String(f.name || '').toLowerCase().endsWith('.pdf')) : null;
                     const showRoutingSlip = mergedFile || slipFile;
+
+                    // Helper: download + print buttons for a PDF file
+                    const PdfActions = ({ file, label }) => {
+                      const rawPath = file.path || '';
+                      const viewUrl = `/api/file-proxy?path=${encodeURIComponent(rawPath)}`;
+                      const downloadUrl = `/api/file-proxy?path=${encodeURIComponent(rawPath)}&download=1`;
+                      return (
+                        <div style={{ padding: '8px 12px', background: '#dee2e6', fontWeight: 600, fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>{label}</span>
+                          <div className="d-flex gap-1">
+                            <button
+                              className="btn btn-sm btn-outline-primary"
+                              style={{ fontSize: '0.75rem', padding: '2px 8px' }}
+                              title="Download PDF"
+                              onClick={() => {
+                                // Server returns Content-Type: application/octet-stream
+                                // so IDM won't intercept it as a PDF
+                                window.open(downloadUrl, '_blank');
+                              }}
+                            >
+                              <FaDownload className="me-1" /> Download
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline-secondary"
+                              style={{ fontSize: '0.75rem', padding: '2px 8px' }}
+                              title="Print PDF"
+                              onClick={() => {
+                                const printWindow = window.open(viewUrl, '_blank');
+                                if (printWindow) {
+                                  printWindow.addEventListener('load', () => {
+                                    setTimeout(() => printWindow.print(), 500);
+                                  });
+                                }
+                              }}
+                            >
+                              <FaPrint className="me-1" /> Print
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    };
 
                     // PRIORITY 1: If a merged PDF exists, show ONLY the merged file
                     if (mergedFile && showRoutingSlip) {
                       return (
                         <div style={{ background: '#e9ecef', borderRadius: '8px', overflow: 'hidden' }}>
-                          <div style={{ padding: '8px 12px', background: '#dee2e6', fontWeight: 600, fontSize: '0.85rem' }}>
-                            📋📄 Routing Slip + Document (Combined PDF)
-                          </div>
+                          <PdfActions file={mergedFile} label="📋📄 Routing Slip + Document (Combined PDF)" />
                           <PdfViewer
                             filePath={mergedFile.path}
                             title="Merged Document"
@@ -1523,9 +1725,7 @@ export default function Dashboard() {
                     if (slipFile && showRoutingSlip) {
                       return (
                         <div style={{ background: '#e9ecef', borderRadius: '8px', overflow: 'hidden' }}>
-                          <div style={{ padding: '8px 12px', background: '#dee2e6', fontWeight: 600, fontSize: '0.85rem' }}>
-                            📋 Routing Slip
-                          </div>
+                          <PdfActions file={slipFile} label="📋 Routing Slip" />
                           <PdfViewer
                             filePath={slipFile.path}
                             title="Routing Slip"
@@ -1549,9 +1749,13 @@ export default function Dashboard() {
                     }
                     return (
                       <div style={{ background: '#e9ecef', borderRadius: '8px', overflow: 'hidden' }}>
-                        <div style={{ padding: '8px 12px', background: '#dee2e6', fontWeight: 600, fontSize: '0.85rem' }}>
-                          📄 Document PDF
-                        </div>
+                        {docFiles.length === 1 ? (
+                          <PdfActions file={docFiles[0]} label="📄 Document PDF" />
+                        ) : (
+                          <div style={{ padding: '8px 12px', background: '#dee2e6', fontWeight: 600, fontSize: '0.85rem' }}>
+                            📄 Document PDF
+                          </div>
+                        )}
                         <div>
                           {docFiles.map((file, idx) => {
                             const filePath = file.path || '';

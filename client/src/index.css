@@ -206,11 +206,93 @@ body {
 
 /* Fix for main layout when sidebar is fixed on mobile */
 .d-flex.main-layout {
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 @media (max-width: 992px) {
   .d-flex.main-layout {
     flex-direction: column;
   }
+}
+
+/* Flex-grow-1 pages: make scroll container with sticky navbar.
+   NOTE: this is a PAGE-SHELL class (direct child of .d-flex after <Sidebar />).
+   Never use it on nested elements — height:100vh + overflow:hidden clips tall
+   content so it can no longer be scrolled. Use .grow-col for inner columns. */
+.flex-grow-1 {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Inner flex child that should just take the leftover space */
+.grow-col {
+  flex: 1 1 0%;
+  min-width: 0;
+}
+.flex-grow-1 > .content-area {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ===== Inactivity auto-logout warning overlay ===== */
+.idle-warning-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.idle-warning-box {
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 28px 32px;
+  max-width: 380px;
+  width: calc(100% - 40px);
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  animation: idlePop 0.25s ease-out;
+}
+
+@keyframes idlePop {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.idle-warning-icon {
+  font-size: 2.4rem;
+  line-height: 1;
+  margin-bottom: 10px;
+}
+
+.idle-warning-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #1f2937;
+}
+
+.idle-warning-text {
+  color: #4b5563;
+  font-size: 0.95rem;
+  margin-bottom: 18px;
+}
+
+.idle-warning-text strong {
+  color: #b91c1c;
+  font-size: 1.05rem;
+}
+
+.idle-warning-btn {
+  min-width: 160px;
 }

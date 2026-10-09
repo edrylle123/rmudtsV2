@@ -1115,11 +1115,14 @@ function generateControlNumber(origin, cb) {
   const datePrefix = `${yy}${mm}${dd}`;
   const originValue = String(origin || "internal").toLowerCase();
 
-  // Get the MAX sequence across ALL records (not just today's) for this origin
+  // Get the MAX sequence across ALL records (not just today's) for this origin.
+  // Only well-formed YYMMDD-NNN numbers are counted: a malformed control number
+  // (e.g. "DEL-1791363687262" from test data) must never poison the sequence and
+  // push every future number to a seven-trillion-sized value.
   const sql = `
     SELECT MAX(CAST(SUBSTRING_INDEX(control_number, '-', -1) AS UNSIGNED)) AS max_seq
     FROM records
-    WHERE control_number LIKE '%-%' AND record_origin = ?
+    WHERE control_number REGEXP '^[0-9]{6}-[0-9]+$' AND record_origin = ?
   `;
   db.query(sql, [originValue], function (err, rows) {
     if (err) {
@@ -1859,6 +1862,451 @@ app.get("/api/tracking/:office", verifyToken, (req, res) => {
           recentMovements: recentMovements || [],
         });
       });
+    });
+  });
+});
+
+// ====== ANALYTICS ======
+// Aggregates for the Records Analytics page. Every figure is computed here from
+// the real columns so the page never has to guess. Snapshot = every record in
+// scope; window figures = records whose created_at falls inside from..to.
+const anPad = (n) => String(n).padStart(2, "0");
+const anDayKey = (d) => `${d.getFullYear()}-${anPad(d.getMonth() + 1)}-${anPad(d.getDate())}`;
+const anNum = (v) => Number(v || 0);
+
+function anBucketKey(value, gran) {
+  const d = new Date(value);
+  if (gran === "month") return `${d.getFullYear()}-${anPad(d.getMonth() + 1)}`;
+  if (gran === "week") {
+    const w = new Date(d);
+    w.setDate(w.getDate() - ((w.getDay() + 6) % 7)); // Monday-based week
+    return anDayKey(w);
+  }
+  return anDayKey(d);
+}
+
+function anEnumerateBuckets(fromKey, toKey, gran) {
+  const out = [];
+  const start = new Date(fromKey + "T00:00:00");
+  const end = new Date(toKey + "T00:00:00");
+  if (gran === "month") {
+    let y = start.getFullYear();
+    let m = start.getMonth();
+    const ey = end.getFullYear();
+    const em = end.getMonth();
+    while (y < ey || (y === ey && m <= em)) {
+      out.push(`${y}-${anPad(m + 1)}`);
+      m += 1;
+      if (m > 11) {
+        m = 0;
+        y += 1;
+      }
+    }
+  } else if (gran === "week") {
+    const w = new Date(start);
+    w.setDate(w.getDate() - ((w.getDay() + 6) % 7));
+    while (w <= end) {
+      out.push(anDayKey(w));
+      w.setDate(w.getDate() + 7);
+    }
+  } else {
+    const d = new Date(start);
+    while (d <= end) {
+      out.push(anDayKey(d));
+      d.setDate(d.getDate() + 1);
+    }
+  }
+  return out;
+}
+
+// Fold legacy classification labels onto the current dropdown vocabulary.
+const AN_CLASS_ALIASES = {
+  administrative: "Administrative and Management Records",
+  "administrative and management records": "Administrative and Management Records",
+  financial: "Financial and Accounting record",
+  "financial and accounting record": "Financial and Accounting record",
+  hr: "Human Resource Personnel Management Records",
+  "human resource personnel management records": "Human Resource Personnel Management Records",
+};
+
+app.get("/api/analytics", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const granParam = String(req.query.granularity || "auto").toLowerCase();
+    const today = new Date();
+
+    const toKey = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.to || ""))
+      ? String(req.query.to)
+      : anDayKey(today);
+
+    let fromKey = String(req.query.from || "");
+    if (!fromKey || fromKey === "earliest") {
+      const e = await queryPromise("SELECT MIN(created_at) AS d FROM records");
+      fromKey = e[0] && e[0].d ? anDayKey(new Date(e[0].d)) : toKey;
+    } else if (!/^\d{4}-\d{2}-\d{2}$/.test(fromKey)) {
+      fromKey = toKey;
+    }
+
+    const start = new Date(fromKey + "T00:00:00");
+    const end = new Date(toKey + "T23:59:59");
+    const days = Math.max(1, Math.round((new Date(toKey) - new Date(fromKey)) / 86400000) + 1);
+
+    let granularity = granParam;
+    if (granularity === "auto") granularity = days <= 31 ? "day" : days <= 120 ? "week" : "month";
+    if (!["day", "week", "month"].includes(granularity)) granularity = "day";
+
+    // Immediately preceding window of the same length (for the delta chip).
+    const prevEnd = new Date(start);
+    prevEnd.setDate(prevEnd.getDate() - 1);
+    const prevStart = new Date(prevEnd);
+    prevStart.setDate(prevStart.getDate() - (days - 1));
+
+    // ---- snapshot (every record in scope) ----
+    const snapRows = await queryPromise(
+      `SELECT COUNT(*) AS total,
+              SUM(record_origin = 'Internal') AS internal,
+              SUM(record_origin = 'External') AS external,
+              SUM(qrcode_path IS NULL OR qrcode_path = '') AS awaitingQr,
+              SUM(qrcode_path IS NOT NULL AND qrcode_path <> '') AS qrTagged,
+              SUM(priority IN ('Urgent', 'Immediate')) AS highPriority,
+              SUM(priority = 'Normal') AS normalPriority,
+              SUM(retention_period IS NOT NULL) AS retentionTracked,
+              SUM(classification IS NOT NULL AND classification <> '') AS classificationSet,
+              SUM(destination_office IS NOT NULL AND destination_office <> '') AS destinationSet,
+              SUM(record_origin IS NOT NULL) AS originSet,
+              SUM(CASE WHEN retention_period IS NOT NULL
+                       AND DATE_ADD(created_at, INTERVAL retention_period YEAR) <= NOW()
+                       THEN 1 ELSE 0 END) AS retentionDue,
+              SUM(CASE WHEN retention_period IS NOT NULL
+                       AND DATE_ADD(created_at, INTERVAL retention_period YEAR) > NOW()
+                       AND DATE_ADD(created_at, INTERVAL retention_period YEAR) <= DATE_ADD(NOW(), INTERVAL 90 DAY)
+                       THEN 1 ELSE 0 END) AS retentionDueSoon
+       FROM records`
+    );
+    const sr = snapRows[0] || {};
+    const snapshot = {
+      total: anNum(sr.total),
+      internal: anNum(sr.internal),
+      external: anNum(sr.external),
+      awaitingQr: anNum(sr.awaitingQr),
+      qrTagged: anNum(sr.qrTagged),
+      highPriority: anNum(sr.highPriority),
+      normalPriority: anNum(sr.normalPriority),
+      retentionTracked: anNum(sr.retentionTracked),
+      retentionDue: anNum(sr.retentionDue),
+      retentionDueSoon: anNum(sr.retentionDueSoon),
+    };
+
+    // ---- range rows (everything the window figures need) ----
+    const rangeRows = await queryPromise(
+      `SELECT id, control_number, description AS title, created_at, record_origin,
+              priority, classification, current_office, destination_office, qrcode_path,
+              retention_period
+       FROM records
+       WHERE created_at >= ? AND created_at <= ?`,
+      [start, end]
+    );
+
+    const windowRow = { total: rangeRows.length, internal: 0, external: 0, awaitingQr: 0 };
+    for (const r of rangeRows) {
+      const origin = (r.record_origin || "").toLowerCase();
+      if (origin === "internal") windowRow.internal += 1;
+      else if (origin === "external") windowRow.external += 1;
+      if (!r.qrcode_path || r.qrcode_path === "") windowRow.awaitingQr += 1;
+    }
+    const prevRows = await queryPromise(
+      "SELECT COUNT(*) AS n FROM records WHERE created_at >= ? AND created_at <= ?",
+      [new Date(anDayKey(prevStart) + "T00:00:00"), new Date(anDayKey(prevEnd) + "T23:59:59")]
+    );
+    const previousTotal = anNum(prevRows[0] && prevRows[0].n);
+    windowRow.previousTotal = previousTotal;
+    windowRow.avgPerDay = Math.round((windowRow.total / days) * 10) / 10;
+    windowRow.deltaPct =
+      previousTotal > 0
+        ? Math.round(((windowRow.total - previousTotal) / previousTotal) * 1000) / 10
+        : null;
+
+    // ---- volume buckets (zero-filled so gaps stay visible) ----
+    const bucketKeys = anEnumerateBuckets(fromKey, toKey, granularity);
+    const bucketMap = new Map(
+      bucketKeys.map((k) => [k, { key: k, internal: 0, external: 0, total: 0 }])
+    );
+    for (const r of rangeRows) {
+      const b = bucketMap.get(anBucketKey(r.created_at, granularity));
+      if (!b) continue;
+      b.total += 1;
+      if ((r.record_origin || "").toLowerCase() === "internal") b.internal += 1;
+      else b.external += 1;
+    }
+    const volume = bucketKeys.map((k) => bucketMap.get(k));
+
+    // ---- breakdowns ----
+    const tally = (rows, pick) => {
+      const m = new Map();
+      for (const r of rows) {
+        const name = pick(r) || "Unspecified";
+        m.set(name, (m.get(name) || 0) + 1);
+      }
+      const total = rows.length;
+      return [...m.entries()]
+        .map(([name, value]) => ({
+          name,
+          value,
+          pct: total > 0 ? Math.round((value / total) * 1000) / 10 : 0,
+        }))
+        .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+    };
+
+    const byPriority = tally(rangeRows, (r) => r.priority);
+    const byCurrentOffice = tally(rangeRows, (r) => r.current_office);
+    const byDestinationOffice = tally(rangeRows, (r) => r.destination_office);
+
+    const classMap = new Map();
+    for (const r of rangeRows) {
+      const raw = r.classification || "Unspecified";
+      const canonical = AN_CLASS_ALIASES[raw.trim().toLowerCase()] || raw;
+      if (!classMap.has(canonical)) {
+        classMap.set(canonical, { name: canonical, value: 0, sources: new Set() });
+      }
+      const entry = classMap.get(canonical);
+      entry.value += 1;
+      entry.sources.add(raw);
+    }
+    const byClassification = [...classMap.values()]
+      .map((c) => ({
+        name: c.name,
+        value: c.value,
+        pct: rangeRows.length > 0 ? Math.round((c.value / rangeRows.length) * 1000) / 10 : 0,
+        sources: [...c.sources].sort(),
+      }))
+      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+    const classificationMapping = [];
+    for (const c of byClassification) {
+      for (const src of c.sources) {
+        if (src !== c.name) classificationMapping.push({ raw: src, canonical: c.name });
+      }
+    }
+
+    // ---- aging buckets (days since creation, as of now) ----
+    const ageDefs = [
+      { key: "0", label: "0-6 days", min: 0, max: 6 },
+      { key: "7", label: "7-29 days", min: 7, max: 29 },
+      { key: "30", label: "30-89 days", min: 30, max: 89 },
+      { key: "90", label: "90+ days", min: 90, max: Infinity },
+    ];
+    const now = Date.now();
+    const aging = ageDefs.map((d) => ({ key: d.key, label: d.label, value: 0, pct: 0 }));
+    for (const r of rangeRows) {
+      const ageDays = Math.max(0, Math.floor((now - new Date(r.created_at).getTime()) / 86400000));
+      const idx = ageDefs.findIndex((d) => ageDays >= d.min && ageDays <= d.max);
+      if (idx >= 0) aging[idx].value += 1;
+    }
+    for (const b of aging) {
+      b.pct = rangeRows.length > 0 ? Math.round((b.value / rangeRows.length) * 1000) / 10 : 0;
+    }
+
+    // ---- 12-month trend (sparkline) ----
+    const trendRows = await queryPromise(
+      `SELECT DATE_FORMAT(created_at, '%Y-%m') AS month_key, COUNT(*) AS total
+       FROM records
+       WHERE created_at >= DATE_SUB(DATE_FORMAT(NOW(), '%Y-%m-01'), INTERVAL 11 MONTH)
+       GROUP BY month_key`
+    );
+    const trendMap = new Map(trendRows.map((r) => [r.month_key, anNum(r.total)]));
+    const trend12m = [];
+    const tmStart = new Date(today.getFullYear(), today.getMonth() - 11, 1);
+    for (let i = 0; i < 12; i += 1) {
+      const d = new Date(tmStart.getFullYear(), tmStart.getMonth() + i, 1);
+      const key = `${d.getFullYear()}-${anPad(d.getMonth() + 1)}`;
+      trend12m.push({ key, total: trendMap.get(key) || 0 });
+    }
+
+    // ---- handoffs between offices ----
+    const moveRows = await queryPromise(
+      `SELECT rm.action, rm.from_office, rm.to_office
+       FROM record_movements rm
+       WHERE rm.timestamp >= ? AND rm.timestamp <= ?`,
+      [start, end]
+    );
+    const officeMap = new Map();
+    const touch = (name) => {
+      if (!officeMap.has(name)) officeMap.set(name, { name, sent: 0, received: 0, total: 0 });
+      return officeMap.get(name);
+    };
+    let transferTotal = 0;
+    for (const m of moveRows) {
+      const from = m.from_office;
+      const to = m.to_office;
+      if (from && from !== "Unknown") {
+        touch(from).sent += 1;
+        transferTotal += 1;
+      }
+      if (to) {
+        touch(to).received += 1;
+        transferTotal += 1;
+      }
+    }
+    const transferOffices = [...officeMap.values()]
+      .map((o) => ({ ...o, total: o.sent + o.received }))
+      .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+    const transfers = {
+      total: transferTotal,
+      officeCount: transferOffices.length,
+      offices: transferOffices,
+    };
+
+    // ---- watchlists ----
+    const awaitingRows = await queryPromise(
+      `SELECT id, control_number, description AS title, current_office, priority,
+              record_origin, created_at
+       FROM records
+       WHERE qrcode_path IS NULL OR qrcode_path = ''
+       ORDER BY created_at ASC
+       LIMIT 8`
+    );
+    const oldestAwaitingQr = awaitingRows.map((r) => ({
+      ...r,
+      ageDays: Math.max(0, Math.floor((now - new Date(r.created_at).getTime()) / 86400000)),
+    }));
+
+    const retentionRows = await queryPromise(
+      `SELECT id, control_number, description AS title, current_office,
+              retention_period, created_at,
+              DATE_ADD(created_at, INTERVAL retention_period YEAR) AS due_at
+       FROM records
+       WHERE retention_period IS NOT NULL
+       ORDER BY due_at ASC`
+    );
+    const soonLimit = now + 90 * 86400000;
+    const retention = retentionRows.map((r) => {
+      const due = new Date(r.due_at).getTime();
+      const state = due <= now ? "overdue" : due <= soonLimit ? "soon" : "ok";
+      return {
+        id: r.id,
+        control_number: r.control_number,
+        title: r.title,
+        current_office: r.current_office,
+        retentionYears: anNum(r.retention_period),
+        created_at: r.created_at,
+        dueAt: r.due_at,
+        daysLeft: Math.ceil((due - now) / 86400000),
+        state,
+      };
+    });
+
+    // ---- attachments ----
+    const attRows = await queryPromise(
+      `SELECT COUNT(*) AS files, COALESCE(SUM(rf.file_size), 0) AS bytes,
+              COUNT(DISTINCT rf.record_id) AS docsWithFiles
+       FROM record_files rf
+       JOIN records r ON r.id = rf.record_id`
+    );
+    const orphanRows = await queryPromise(
+      `SELECT COUNT(*) AS files, COUNT(DISTINCT rf.record_id) AS docs
+       FROM record_files rf
+       LEFT JOIN records r ON r.id = rf.record_id
+       WHERE r.id IS NULL`
+    );
+    const ar = attRows[0] || {};
+    const attachments = {
+      files: anNum(ar.files),
+      bytes: anNum(ar.bytes),
+      docsWithFiles: anNum(ar.docsWithFiles),
+      avgPerDocument:
+        anNum(ar.docsWithFiles) > 0
+          ? Math.round((anNum(ar.files) / anNum(ar.docsWithFiles)) * 10) / 10
+          : 0,
+      orphanFiles: anNum(orphanRows[0] && orphanRows[0].files),
+      orphanDocs: anNum(orphanRows[0] && orphanRows[0].docs),
+    };
+
+    // ---- data quality ----
+    const totalSnap = snapshot.total;
+    const coverage = (key, label, ok, note) => ({
+      key,
+      label,
+      ok,
+      total: totalSnap,
+      missing: Math.max(0, totalSnap - ok),
+      pct: totalSnap > 0 ? Math.round((ok / totalSnap) * 1000) / 10 : 0,
+      note: note || "",
+    });
+    const dataQuality = [
+      coverage(
+        "retention",
+        "Retention period on file",
+        snapshot.retentionTracked,
+        "Records without one cannot be scheduled for disposal."
+      ),
+      coverage(
+        "qr",
+        "QR-tagged",
+        snapshot.qrTagged,
+        "A missing QR code is what marks a record as awaiting action."
+      ),
+      coverage("classification", "Classification recorded", anNum(sr.classificationSet), ""),
+      coverage(
+        "destination",
+        "Destination office recorded",
+        anNum(sr.destinationSet),
+        "External documents may legitimately have none."
+      ),
+      coverage("origin", "Record origin recorded", anNum(sr.originSet), ""),
+    ];
+
+    res.json({
+      scope: { all: true, office: null },
+      generatedAt: new Date().toISOString(),
+      range: { from: fromKey, to: toKey, days, granularity },
+      snapshot,
+      window: windowRow,
+      trend12m,
+      volume,
+      byCurrentOffice,
+      byDestinationOffice,
+      byPriority,
+      byClassification,
+      aging,
+      transfers,
+      watchlists: { oldestAwaitingQr, retention },
+      attachments,
+      classificationMapping,
+      dataQuality,
+    });
+  } catch (err) {
+    console.error("Analytics error:", err.message);
+    res.status(500).json({ error: "Failed to build analytics", detail: err.message });
+  }
+});
+
+// ====== OPERATIONS STREAM ======
+// Full activity feed for the Operations Stream card: every logged record
+// movement (created / released / received), newest first, plus the task queue
+// of records that have not yet been updated (no QR code generated).
+// Admin-only, matching the /dashboard route that renders the card.
+app.get("/api/activity", verifyToken, verifyAdmin, (req, res) => {
+  const feedSql = `
+    SELECT rm.id, rm.record_id, r.control_number, rm.action,
+           rm.from_office, rm.to_office, rm.actor, rm.timestamp,
+           EXISTS(SELECT 1 FROM users u
+                  WHERE u.name = rm.actor
+                    AND u.role IN ('admin', 'super_admin')) AS actor_is_admin
+    FROM record_movements rm
+    LEFT JOIN records r ON r.id = rm.record_id
+    ORDER BY rm.timestamp DESC, rm.id DESC
+  `;
+  const queueSql = `
+    SELECT id, control_number, description AS title, priority,
+           office_requestor, created_at
+    FROM records
+    WHERE qrcode_path IS NULL OR qrcode_path = ''
+    ORDER BY created_at DESC
+  `;
+
+  db.query(feedSql, (feedErr, feed) => {
+    if (feedErr) return res.status(500).json({ error: feedErr.message });
+    db.query(queueSql, (queueErr, queue) => {
+      if (queueErr) return res.status(500).json({ error: queueErr.message });
+      res.json({ feed: feed || [], queue: queue || [] });
     });
   });
 });

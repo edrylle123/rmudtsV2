@@ -1,0 +1,195 @@
+/* ============================================================
+   Reports Page
+   ============================================================ */
+.reports {
+  background: transparent;
+}
+
+.reports-loading {
+  padding: 60px 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+
+/* ---------- Filter bar ---------- */
+/* ---------- Column Filters ---------- */
+.reports-filters {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 16px;
+  box-shadow: var(--shadow-sm);
+}
+.reports-filter-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.reports-filter-group {
+  flex: 1 1 0;
+  min-width: 140px;
+}
+.reports-filter-group.reports-filter-clear {
+  flex: 0 0 auto;
+  min-width: auto;
+}
+.reports-filter-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.reports-filter-group .form-control,
+.reports-filter-group .form-select {
+  font-size: 0.82rem;
+  border-color: var(--border);
+}
+.reports-filter-group .form-control:focus,
+.reports-filter-group .form-select:focus {
+  border-color: var(--brand-400);
+  box-shadow: 0 0 0 0.15rem rgba(40, 98, 58, 0.12);
+}
+@media (max-width: 768px) {
+  .reports-filter-row {
+    flex-direction: column;
+  }
+  .reports-filter-group {
+    min-width: 100%;
+  }
+}
+
+
+/* ---------- Table wrapper (scrollable) ---------- */
+.reports-table-wrapper {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+  overflow: auto;
+  max-height: calc(100vh - 220px);
+}
+
+/* ---------- Table ---------- */
+.reports-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  min-width: 1100px;
+}
+
+.reports-table thead th {
+  background: #f0f7f2;
+  color: var(--text);
+  font-weight: 700;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 12px 14px;
+  border-bottom: 2px solid var(--border);
+  border-right: 1px solid var(--border);
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.reports-table thead tr:first-child th {
+  background: #e2efe6;
+}
+
+.reports-table thead tr:nth-child(2) th {
+  background: #f0f7f2;
+  font-size: 0.74rem;
+  padding: 8px 14px;
+  font-weight: 600;
+}
+
+.reports-table thead th:first-child,
+.reports-table thead th:last-child {
+  text-align: left;
+}
+
+/* ---------- Body ---------- */
+.reports-table tbody td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  vertical-align: middle;
+  color: var(--text);
+}
+
+.reports-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.reports-table tbody tr:hover {
+  background: #f8faf9;
+}
+
+.reports-table tbody td.fw-semibold {
+  font-weight: 700;
+  color: var(--brand-700);
+}
+
+.reports-table tbody td.text-center {
+  text-align: center;
+}
+
+/* ---------- Footer ---------- */
+.reports-footer {
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding: 16px 0 8px;
+  border-top: 1px solid var(--border);
+  margin-top: 16px;
+}
+
+/* ---------- Print ---------- */
+@media print {
+  .sidebar,
+  .navbar {
+    display: none !important;
+  }
+  .reports {
+    padding: 0 !important;
+  }
+  .reports-table-wrapper {
+    overflow: visible;
+    max-height: none;
+    box-shadow: none;
+    border: none;
+  }
+  .reports-table thead th {
+    position: static;
+    background: #f0f7f2 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 768px) {
+  .reports {
+    padding: 12px 8px;
+  }
+  .reports-table {
+    font-size: 0.78rem;
+    min-width: 900px;
+  }
+  .reports-table thead th {
+    padding: 8px 10px;
+    font-size: 0.7rem;
+  }
+  .reports-table tbody td {
+    padding: 8px 10px;
+  }
+}
