@@ -13,6 +13,8 @@ import {
   FaCheckCircle,
   FaListAlt,
   FaInbox,
+  FaDatabase,
+  FaHistory,
 } from "react-icons/fa";
 import { FaLocationCrosshairs } from "react-icons/fa6";
 import { FaClipboardList } from "react-icons/fa";
@@ -116,6 +118,12 @@ export default function Sidebar() {
           </Item>
           <Item to="/dropdown-management" icon={<FaListAlt />}>
             Dropdown Options
+          </Item>
+          <Item to="/activity-logs" icon={<FaHistory />}>
+            Activity Logs
+          </Item>
+          <Item to="/database-backup" icon={<FaDatabase />}>
+            Database Backup
           </Item>
         </>
       )}

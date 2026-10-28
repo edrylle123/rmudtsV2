@@ -1,7 +1,7 @@
 // client/src/App.js
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import "./App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { AuthProvider } from "./AuthContext";
 import AttachmentViewer from "./Components/AttachmentViewer";
 import "bootstrap/dist/css/bootstrap.min.css";
@@ -22,6 +22,9 @@ import AllUsers from "./Components/AllUsers";
 import RoutingSlipSettings from "./Components/RoutingSlipSettings";
 import OfficeManagement from "./Components/OfficeManagement";
 import DropdownManagement from "./Components/DropdownManagement";
+import DatabaseBackup from "./Components/DatabaseBackup";
+import ActivityLogs from "./Components/ActivityLogs";
+import axios from "./Components/axios";
 import IncomingDocuments from "./Components/IncomingDocuments";
 // import CreateUserForm from "./Components/CreateUserForm";
 import EditRecords from "./Components/EditRecords"; // <- FIXED import (no trailing "s")
@@ -37,10 +40,30 @@ import TrackRecord from "./Components/TrackRecord";
 // Optional shared layout:
 // import AppLayout from "./AppLayout";
 
+// Reports each page the signed-in user opens to the activity log. Mounted
+// inside the router so it sees every navigation; it never blocks rendering.
+function ActivityTracker() {
+  const location = useLocation();
+  const lastSent = useRef("");
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const path = location.pathname;
+    if (!token || !path || path === "/" || path === lastSent.current) return;
+    lastSent.current = path;
+    axios.post("/api/activity/page-view", { path }).catch(() => {
+      // Tracking must never interrupt the UI.
+    });
+  }, [location.pathname]);
+
+  return null;
+}
+
 export default function App() {
   
   return (
     <BrowserRouter>
+      <ActivityTracker />
       <AuthProvider>
 
 
@@ -162,6 +185,24 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={["super_admin"]}>
                 <DropdownManagement />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/database-backup"
+            element={
+              <ProtectedRoute allowedRoles={["super_admin"]}>
+                <DatabaseBackup />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/activity-logs"
+            element={
+              <ProtectedRoute allowedRoles={["super_admin"]}>
+                <ActivityLogs />
               </ProtectedRoute>
             }
           />

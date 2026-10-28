@@ -841,6 +841,32 @@
     padding: 14px 12px 12px;
   }
 
+  /* Let each filter group break onto its own line instead of pushing the
+     sticky toolbar wider than the screen (the "Group by" segmented control
+     used to overflow by ~36px, forcing sideways scrolling on a phone). */
+  .an-control-group {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    width: 100%;
+  }
+  .an-control-group-right {
+    margin-left: 0;
+  }
+  .an-control-group > .an-control-label {
+    flex: 0 0 100%;
+  }
+  .an-seg {
+    max-width: 100%;
+  }
+  .an-seg-btn {
+    padding: 6px 9px;
+    font-size: 0.75rem;
+  }
+  .an-toolbar-actions {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
   .an-tile-value {
     font-size: 1.7rem;
   }

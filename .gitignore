@@ -1,0 +1,6 @@
+# Release artifacts built by deploy/tools/build-package.cjs
+dist/
+
+# Development-only toolchain: the portable PHP used to lint and verify the
+# installer (~87 MB). Re-download it at any time; it is never part of the ZIP.
+deploy/tools/php/

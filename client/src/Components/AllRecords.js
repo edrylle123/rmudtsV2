@@ -351,7 +351,7 @@ export default function AllRecords() {
           {loading ? (
             <div>Loading…</div>
           ) : (
-            <div className="table-responsive" style={{ width: "100%" }}>
+            <div className="table-responsive rs-stack" style={{ width: "100%" }}>
               <table className="table table-striped align-middle">
                 <thead>
                   <tr>
@@ -371,31 +371,31 @@ export default function AllRecords() {
                 <tbody>
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={11} className="text-center text-muted">
+                      <td colSpan={11} data-label="" className="text-center text-muted">
                         No records match your filters.
                       </td>
                     </tr>
                   )}
                   {pageRows.map((r) => (
                     <tr key={r.id}>
-                      <td>{r.control_number || "—"}</td>
-                      <td>
+                      <td data-label="Control No.">{r.control_number || "—"}</td>
+                      <td data-label="Title / Description">
                         <div className="small fw-semibold">{r.title }</div>
                         <div className="text-muted" style={{ fontSize: '0.78rem', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description || "—"}</div>
                       </td>
-                      <td>{r.classification || "—"}</td>
+                      <td data-label="Classification">{r.classification || "—"}</td>
                       {/* <td>
                         <span className={priorityClass(r.priority)}>
                           {r.priority || "-"}
                         </span>
                       </td> */}
-                      <td>{r.office_requestor || "—"}</td>
+                      <td data-label="Office Requestor">{r.office_requestor || "—"}</td>
 
-                      <td>{r.destination_office || "—"}</td>
-                      <td>{r.record_origin || "Unknown"}</td>
-                      <td>{fmtDate(r.created_at)}</td>
-                      <td>{fmtDate(r.received_at)}</td>
-                      <td>
+                      <td data-label="Destination Office">{r.destination_office || "—"}</td>
+                      <td data-label="Record Origin">{r.record_origin || "Unknown"}</td>
+                      <td data-label="Created At">{fmtDate(r.created_at)}</td>
+                      <td data-label="Received At">{fmtDate(r.received_at)}</td>
+                      <td data-label="Attachments">
                         {(() => {
                           // Only show merged documents (routing slip + document combined)
                           const mergedFiles = r.files.filter(f =>
@@ -422,7 +422,7 @@ export default function AllRecords() {
                           return <span className="text-muted">No merged document</span>;
                         })()}
                       </td>
-                      <td>
+                      <td data-label="Actions">
                         <div className="d-flex gap-1 justify-content-center">
                           <button
                             className="ar-icon-btn ar-icon-view"

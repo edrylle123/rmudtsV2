@@ -229,7 +229,7 @@ export default function AllUsers() {
           {loading ? (
             <div>Loading users…</div>
           ) : (
-            <div className="table-responsive">
+            <div className="table-responsive rs-stack">
               <table className="table table-striped align-middle">
                 <thead>
                   <tr>
@@ -246,12 +246,12 @@ export default function AllUsers() {
                 <tbody>
                   {rows.map((r) => (
                     <tr key={r.key}>
-                      <td>{r.name}</td>
-                      <td>{r.email}</td>
-                      <td>{r.idnumber}</td>
-                      <td>{r.role}</td>
-                      <td>{r.office}</td>
-                      <td className="d-flex gap-2">
+                      <td data-label="Name">{r.name}</td>
+                      <td data-label="Email">{r.email}</td>
+                      <td data-label="ID Number">{r.idnumber}</td>
+                      <td data-label="Role">{r.role}</td>
+                      <td data-label="Office">{r.office}</td>
+                      <td data-label="Actions" className="d-flex gap-2">
                         <button className="btn btn-sm btn-outline-primary" onClick={() => openEditor(r)}>
                           Edit
                         </button>
@@ -269,7 +269,7 @@ export default function AllUsers() {
 
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="text-center text-muted">
+                      <td colSpan={5} data-label="" className="text-center text-muted">
                         No users found.
                       </td>
                     </tr>

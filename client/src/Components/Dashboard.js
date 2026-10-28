@@ -134,6 +134,17 @@ export default function Dashboard() {
 
   const [rowsRaw, setRowsRaw] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Phones need a different axis treatment: fewer, steeper labels. The chart
+  // labels were overlapping each other and being cut off below 600px.
+  const [isNarrow, setIsNarrow] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 600px)").matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 600px)");
+    const onChange = (e) => setIsNarrow(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
   const [error, setError] = useState(null);
   // const [deletingId, setDeletingId] = useState(null);
   const { user } = useAuth();
@@ -1118,18 +1129,28 @@ export default function Dashboard() {
             </div>
 
             {/* Line Chart for Records Per Office */}
-            <div className="chart-container" style={{ flex: "1 1 380px", minWidth: 0, height: "250px", overflow: "hidden" }}>
+            <div className="chart-container" style={{ flex: "1 1 380px", minWidth: 0, height: isNarrow ? "350px" : "250px", overflow: "hidden" }}>
               <h5 className="mb-4">Office Records Overview</h5>
-              <ResponsiveContainer width="100%" height={165}>
-                <LineChart data={chartData} margin={{ top: 5, right: 16, bottom: 0, left: 0 }}>
+              <ResponsiveContainer width="100%" height={isNarrow ? 262 : 165}>
+                <LineChart data={chartData} margin={{ top: 5, right: isNarrow ? 4 : 16, bottom: 0, left: isNarrow ? 8 : 0 }}>
                   <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.5} />
-                  <XAxis dataKey="office" tick={{ fontSize: 11 }} interval={0} angle={-15} textAnchor="end" height={38} />
+                  <XAxis
+                    dataKey="office"
+                    tick={{ fontSize: isNarrow ? 9 : 11 }}
+                    interval={isNarrow ? 1 : 0}
+                    angle={isNarrow ? -90 : -15}
+                    textAnchor="end"
+                    height={isNarrow ? 118 : 38}
+                    dx={isNarrow ? -2 : 0}
+                  />
                   <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={28} />
                   <Tooltip
                     formatter={(v) => [`${v} record(s)`, "Records"]}
                     contentStyle={{ borderRadius: "6px", fontSize: "0.75rem" }}
                   />
-                  <Legend wrapperStyle={{ fontSize: "0.75rem" }} />
+                  <Legend
+                    wrapperStyle={{ fontSize: "0.75rem", display: isNarrow ? "none" : "block" }}
+                  />
                   <Line
                     type="monotone"
                     dataKey="records"

@@ -18,6 +18,7 @@ export default function Reports() {
   const [filterTitle, setFilterTitle] = useState("");
   const [filterDivision, setFilterDivision] = useState("");
   const [filterType, setFilterType] = useState("All");
+  const [filterOrigin, setFilterOrigin] = useState("All");
   const [filterRetention, setFilterRetention] = useState("All");
   const [filterDisposition, setFilterDisposition] = useState("All");
 
@@ -49,6 +50,7 @@ export default function Reports() {
       rev: idx + 1,
       title: r.description || r.title || "",
       division: r.office_requestor || "",
+      origin: r.record_origin || "",
       recordType:
         (r.record_origin || "").toLowerCase() === "paper" ||
         (r.record_origin || "").toLowerCase() === "external"
@@ -82,6 +84,7 @@ export default function Reports() {
         return false;
       if (filterDivision && r.division !== filterDivision) return false;
       if (filterType !== "All" && r.recordType !== filterType) return false;
+      if (filterOrigin !== "All" && r.origin !== filterOrigin) return false;
       if (filterRetention !== "All" && r.retention !== filterRetention) return false;
       if (filterDisposition !== "All") {
         if (filterDisposition === "Dispose" && r.dispose !== "Dispose") return false;
@@ -89,15 +92,23 @@ export default function Reports() {
       }
       return true;
     });
-  }, [rows, filterControl, filterTitle, filterDivision, filterType, filterRetention, filterDisposition]);
+  }, [rows, filterControl, filterTitle, filterDivision, filterType, filterOrigin, filterRetention, filterDisposition]);
 
-  const hasFilters = filterControl || filterTitle || filterDivision || filterType !== "All" || filterRetention !== "All" || filterDisposition !== "All";
+  const hasFilters =
+    filterControl ||
+    filterTitle ||
+    filterDivision ||
+    filterType !== "All" ||
+    filterOrigin !== "All" ||
+    filterRetention !== "All" ||
+    filterDisposition !== "All";
 
   const clearAll = () => {
     setFilterControl("");
     setFilterTitle("");
     setFilterDivision("");
     setFilterType("All");
+    setFilterOrigin("All");
     setFilterRetention("All");
     setFilterDisposition("All");
   };
@@ -226,6 +237,19 @@ export default function Reports() {
                 </select>
               </div>
               <div className="reports-filter-group">
+                <label className="reports-filter-label">Origin</label>
+                <select
+                  className="form-select form-select-sm"
+                  value={filterOrigin}
+                  onChange={(e) => setFilterOrigin(e.target.value)}
+                  title="Filter documents by Internal / External"
+                >
+                  <option value="All">All Documents</option>
+                  <option value="Internal">Internal</option>
+                  <option value="External">External</option>
+                </select>
+              </div>
+              <div className="reports-filter-group">
                 <label className="reports-filter-label">Retention</label>
                 <select
                   className="form-select form-select-sm"
@@ -264,7 +288,7 @@ export default function Reports() {
           {loading ? (
             <div className="reports-loading">Loading reports...</div>
           ) : (
-            <div className="reports-table-wrapper">
+            <div className="reports-table-wrapper rs-stack">
               <table className="reports-table" ref={tableRef}>
                 <thead>
                   <tr>
@@ -287,23 +311,23 @@ export default function Reports() {
                 <tbody>
                   {filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="text-center text-muted py-4">
+                      <td colSpan={10} data-label="" className="text-center text-muted py-4">
                         No records match the current filters.
                       </td>
                     </tr>
                   ) : (
                     filtered.map((r, idx) => (
                       <tr key={r.id || idx}>
-                        <td className="fw-semibold">{r.control_number || "—"}</td>
-                        <td>{r.rev}</td>
-                        <td>{r.title || "—"}</td>
-                        <td>{r.division || "—"}</td>
-                        <td className="text-center">{r.recordType === "Electronic" ? "✓" : "—"}</td>
-                        <td className="text-center">{r.recordType === "Paper" ? "✓" : "—"}</td>
-                        <td>{r.retention || "—"}</td>
-                        <td className="text-center">{r.dispose || "—"}</td>
-                        <td className="text-center">{r.retain || "—"}</td>
-                        <td>{r.disposalMethod || "—"}</td>
+                        <td data-label="Control Number" className="fw-semibold">{r.control_number || "—"}</td>
+                        <td data-label="Rev #">{r.rev}</td>
+                        <td data-label="Title / Description">{r.title || "—"}</td>
+                        <td data-label="Division">{r.division || "—"}</td>
+                        <td data-label="Electronic" className="text-center">{r.recordType === "Electronic" ? "✓" : "—"}</td>
+                        <td data-label="Paper" className="text-center">{r.recordType === "Paper" ? "✓" : "—"}</td>
+                        <td data-label="Retention">{r.retention || "—"}</td>
+                        <td data-label="Dispose" className="text-center">{r.dispose || "—"}</td>
+                        <td data-label="Retain" className="text-center">{r.retain || "—"}</td>
+                        <td data-label="Disposal Method">{r.disposalMethod || "—"}</td>
                       </tr>
                     ))
                   )}

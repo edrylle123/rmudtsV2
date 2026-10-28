@@ -1,0 +1,18 @@
+# =====================================================================
+# RMUDTS — package placeholder folder
+# =====================================================================
+# The running application keeps its real data outside public_html
+# (/home/<account>/rmudts-*), because the archive is extracted into the web
+# root. These folders exist so the archive matches the documented layout and
+# so anything copied here by mistake stays unreachable.
+<IfModule mod_autoindex.c>
+  Options -Indexes
+  IndexIgnore *
+</IfModule>
+<IfModule mod_authz_core.c>
+  Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+  Order allow,deny
+  Deny from all
+</IfModule>

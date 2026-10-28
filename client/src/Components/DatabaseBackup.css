@@ -1,0 +1,363 @@
+/* ============================================================
+   Database Backup page
+   ============================================================ */
+.db-page {
+  padding-bottom: 32px;
+}
+
+.db-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.db-header-icon {
+  font-size: 1.4rem;
+  color: var(--brand-600);
+  background: var(--brand-100);
+  border-radius: 12px;
+  padding: 12px;
+  box-sizing: content-box;
+  flex-shrink: 0;
+}
+
+.db-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 4px;
+}
+
+.db-subtitle {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  max-width: 60ch;
+}
+
+.db-subtitle code {
+  background: var(--brand-50);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0 4px;
+  font-size: 0.82rem;
+  color: var(--brand-700);
+}
+
+/* ---------- Alert ---------- */
+.db-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  margin-bottom: 18px;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  border: 1px solid transparent;
+}
+
+.db-alert-success {
+  background: #ecfdf3;
+  border-color: #abefc6;
+  color: #085d3a;
+}
+
+.db-alert-error {
+  background: #fef3f2;
+  border-color: #fecdca;
+  color: #b42318;
+}
+
+.db-alert-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.db-alert-detail {
+  margin-top: 4px;
+  font-size: 0.78rem;
+  opacity: 0.85;
+  overflow-wrap: anywhere;
+}
+
+.db-alert-close {
+  background: transparent;
+  border: none;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.6;
+  padding: 0 2px;
+}
+.db-alert-close:hover {
+  opacity: 1;
+}
+
+/* ---------- Cards ---------- */
+.db-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.db-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.db-card-danger {
+  border-color: #f4d3d1;
+}
+
+.db-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.db-card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.db-icon-backup {
+  background: var(--brand-100);
+  color: var(--brand-600);
+}
+
+.db-icon-restore {
+  background: #fee4e2;
+  color: #b42318;
+}
+
+.db-card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 2px;
+  color: var(--text);
+}
+
+.db-card-sub {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.db-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-2);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.db-list li + li {
+  margin-top: 2px;
+}
+
+.db-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ---------- Warning box ---------- */
+.db-warning {
+  display: flex;
+  gap: 10px;
+  background: #fffaeb;
+  border: 1px solid #fedf89;
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #93370d;
+}
+
+.db-warning svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+/* ---------- File picker ---------- */
+.db-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.db-file-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  padding: 9px 14px;
+  border: 1px dashed var(--brand-300);
+  border-radius: var(--radius-sm);
+  background: var(--brand-50);
+  color: var(--brand-700);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  max-width: 100%;
+}
+
+.db-file-label:hover {
+  background: var(--brand-100);
+  border-color: var(--brand-400);
+}
+
+.db-file-input:focus-visible + .db-file-label {
+  outline: 2px solid var(--brand-400);
+  outline-offset: 2px;
+}
+
+.db-file-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 0.8rem;
+}
+
+.db-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.db-file-size {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.db-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--text-2);
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.db-confirm input {
+  margin-top: 2px;
+  accent-color: #b42318;
+  flex-shrink: 0;
+}
+
+.db-confirm-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ---------- Buttons ---------- */
+.db-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  align-self: flex-start;
+  padding: 10px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.06s ease;
+}
+
+.db-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.db-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.db-btn-primary {
+  background: var(--brand-600);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(17, 58, 32, 0.18);
+}
+.db-btn-primary:hover:not(:disabled) {
+  background: var(--brand-700);
+}
+
+.db-btn-danger {
+  background: #b42318;
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(180, 35, 24, 0.2);
+}
+.db-btn-danger:hover:not(:disabled) {
+  background: #912018;
+}
+
+.db-spin {
+  animation: db-spin 0.9s linear infinite;
+}
+
+@keyframes db-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1100px) {
+  .db-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 576px) {
+  .db-page {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .db-title {
+    font-size: 1.25rem;
+  }
+  .db-card {
+    padding: 16px;
+  }
+  .db-btn,
+  .db-file-label {
+    align-self: stretch;
+    width: 100%;
+  }
+  .db-file-label {
+    justify-content: center;
+  }
+}

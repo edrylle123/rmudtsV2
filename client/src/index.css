@@ -207,6 +207,7 @@ body {
 /* Fix for main layout when sidebar is fixed on mobile */
 .d-flex.main-layout {
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -216,12 +217,12 @@ body {
   }
 }
 
-/* Flex-grow-1 pages: make scroll container with sticky navbar.
+/* Flex-grow-1 pages: page shell with a sticky navbar over a scrolling body.
    NOTE: this is a PAGE-SHELL class (direct child of .d-flex after <Sidebar />).
-   Never use it on nested elements — height:100vh + overflow:hidden clips tall
-   content so it can no longer be scrolled. Use .grow-col for inner columns. */
+   Never use it on nested elements. Use .grow-col for inner columns. */
 .flex-grow-1 {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -232,9 +233,98 @@ body {
   flex: 1 1 0%;
   min-width: 0;
 }
-.flex-grow-1 > .content-area {
-  flex: 1;
+
+/* The page's content wrapper is the scroll region, so the navbar above it stays
+   put. Both wrapper conventions used across pages are covered: .content-area and
+   a plain Bootstrap .container/.container-fluid. Without this the shell clipped
+   any page taller than the viewport and nothing could scroll. */
+.flex-grow-1 > .content-area,
+.flex-grow-1 > .container,
+.flex-grow-1 > .container-fluid {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+}
+
+/* ============================================================
+   Responsive data tables (.rs-stack)
+   ------------------------------------------------------------
+   Add .rs-stack to the scroll wrapper of a data table and
+   data-label="<column>" to every <td>. Below 768px each row becomes a
+   card, so no page ever needs sideways scrolling to read a record.
+   ============================================================ */
+@media (max-width: 900px) {
+  .rs-stack {
+    display: block;
+    width: 100%;
+    max-height: none !important;
+    overflow: visible !important;
+    border: none !important;
+    background: transparent;
+  }
+  .rs-stack > table,
+  .rs-stack .table,
+  .rs-stack .reports-table {
+    display: block;
+    width: 100% !important;
+    min-width: 0 !important;
+    border: none;
+    background: transparent;
+  }
+  .rs-stack > table > thead {
+    display: none;
+  }
+  .rs-stack > table > tbody {
+    display: block;
+  }
+  .rs-stack > table > tbody > tr {
+    display: block;
+    position: relative;
+    background: var(--surface, #fff) !important;
+    border: 1px solid var(--border, #e4e9e6);
+    border-radius: var(--radius-md, 12px);
+    box-shadow: var(--shadow-sm, 0 1px 3px rgba(16, 34, 22, 0.08));
+    padding: 10px 14px;
+    margin-bottom: 10px;
+  }
+  .rs-stack > table > tbody > tr > td {
+    display: block;
+    width: auto !important;
+    border: none !important;
+    background: transparent !important;
+    padding: 5px 0 5px 104px !important;
+    min-height: 26px;
+    position: relative;
+    text-align: left !important;
+    word-break: break-word;
+  }
+  .rs-stack > table > tbody > tr > td::before {
+    content: attr(data-label);
+    position: absolute;
+    left: 0;
+    top: 5px;
+    width: 96px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted, #718076);
+    line-height: 1.55;
+  }
+  /* Cells that should span the card (empty label, e.g. “no rows” message) */
+  .rs-stack > table > tbody > tr > td[data-label=""] {
+    padding-left: 0 !important;
+    text-align: center !important;
+  }
+  .rs-stack > table > tbody > tr > td[data-label=""]::before {
+    content: none;
+  }
+  /* Action cells keep their buttons in a row inside the card */
+  .rs-stack > table > tbody > tr > td.d-flex,
+  .rs-stack > table > tbody > tr > td.justify-content-center {
+    display: flex !important;
+    flex-wrap: wrap;
+  }
 }
 
 /* ===== Inactivity auto-logout warning overlay ===== */

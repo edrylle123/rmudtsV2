@@ -10,12 +10,14 @@ const cors = require("cors");
 const mysql = require("mysql2");
 const bcrypt = require("bcrypt");
 const multer = require("multer");
-const { execFile } = require("child_process");
+const { execFile, execFileSync, spawn } = require("child_process");
 const sharp = require("sharp");
 const { PDFDocument } = require("pdf-lib");
 const QRCode = require("qrcode");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
+const { createActivityLogger } = require("./activityLog");
 const {
   getRoutingSlipSettings,
   saveRoutingSlipSettings,
@@ -34,7 +36,12 @@ const app = express();
 app.use(cors({ origin: CLIENT_ORIGINS }));
 app.use(express.json());
 
-const uploadDir = path.join(__dirname, "uploads");
+// Upload root. Defaults to ./uploads next to this file; the one-click
+// installer points UPLOAD_DIR at a writable folder outside public_html so
+// attachments are never web-addressable as anything but proxied downloads.
+const uploadDir = process.env.UPLOAD_DIR
+  ? path.resolve(process.env.UPLOAD_DIR)
+  : path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
 // Multer file storage configuration
@@ -57,6 +64,9 @@ const upload = multer({
 // "Can't add new command when connection is in closed state".
 const db = mysql.createPool({
   host: process.env.DB_HOST || "localhost",
+  // The installer writes DB_PORT; honour it so a host that does not use 3306
+  // (or a socket-less remote MySQL) works without editing source.
+  port: Number(process.env.DB_PORT || 3306),
   user: process.env.DB_USER || "root",
   password: process.env.DB_PASS || "",
   database: process.env.DB_NAME || "records_db",
@@ -87,6 +97,12 @@ function queryPromise(sql, params) {
     });
   });
 }
+
+// ====== Activity log ======
+// One row per signed-in write action / sign-in / page view. The super admin
+// reads it from the "Activity Logs" page.
+const activityLogger = createActivityLogger(db);
+app.use(activityLogger.middleware);
 
 // ====== JWT Secrets ======
 const REFRESH_TOKEN_SECRET =
@@ -182,7 +198,7 @@ app.get("/api/pdf-viewer", (req, res) => {
 // ====== Static uploads ======
 app.use(
   "/uploads",
-  express.static(path.join(__dirname, "uploads"), {
+  express.static(uploadDir, {
     setHeaders: (res) => {
       res.setHeader("Cache-Control", "no-cache, must-revalidate");
       res.setHeader("Access-Control-Allow-Origin", "*");
@@ -392,6 +408,31 @@ const io = new Server(server, {
 });
 app.set("io", io);
 
+// ====== Health and service identity ======
+// A deployment check must be able to prove the API is alive and can reach
+// MySQL without exposing configuration, credentials or stack traces.
+const SERVICE_STARTED_AT = new Date();
+app.get("/api/health", (req, res) => {
+  db.query("SELECT 1 AS ok", (err) => {
+    res.status(err ? 503 : 200).json({
+      status: err ? "degraded" : "ok",
+      service: "rmudts-api",
+      database: err ? "unreachable" : "connected",
+      uptime_seconds: Math.round(process.uptime()),
+      started_at: SERVICE_STARTED_AT.toISOString(),
+    });
+  });
+});
+
+app.get("/", (req, res) => {
+  res.json({
+    service: "rmudts-api",
+    status: "ok",
+    health: "/api/health",
+    socket: "/socket.io",
+  });
+});
+
 io.on("connection", (socket) => {
   console.log("⚡ Socket connected:", socket.id);
   socket.on("disconnect", () => {
@@ -413,6 +454,20 @@ function verifyToken(req, res, next) {
     req.user = decoded; // { id, idnumber, role, name, office }
     next();
   });
+}
+// Populates req.user when a valid token is present, but never rejects the
+// request. Used by routes that have always been open (record creation) while
+// still letting them attribute the action to the signed-in account.
+function softAuth(req, _res, next) {
+  const parts = (req.headers["authorization"] || "").split(" ");
+  if (parts.length === 2 && parts[0] === "Bearer") {
+    try {
+      req.user = jwt.verify(parts[1], JWT_SECRET); // { id, idnumber, role, name, office }
+    } catch (err) {
+      // Anonymous caller — the route keeps working, the actor stays unknown.
+    }
+  }
+  next();
 }
 function verifyAdmin(req, res, next) {
   const role = req.user?.role;
@@ -682,22 +737,44 @@ app.post("/login", (req, res) => {
   const { idnumber, password } = req.body || {};
   if (!idnumber || !password)
     return res.status(400).json({ message: "ID Number and password required" });
+
+  const logSignIn = (user, ok, reason) => {
+    activityLogger.log({
+      user: user
+        ? { id: user.id, name: user.name, role: user.role, office: user.office }
+        : null,
+      action: ok ? "Signed in" : "Failed sign-in attempt",
+      method: "POST",
+      path: "/login",
+      details: ok
+        ? `ID number: ${idnumber}`
+        : `ID number: ${idnumber}${reason ? ` · ${reason}` : ""}`,
+      status: ok ? 200 : 401,
+      ip: activityLogger.clientIp(req),
+      userAgent: req.get?.("user-agent") || "",
+    });
+  };
+
   db.query(
     "SELECT * FROM users WHERE idnumber = ?",
     [idnumber],
     async (err, rows) => {
       if (err) return res.status(500).json({ message: err.message });
       if (!rows || rows.length === 0) {
+        logSignIn(null, false, "unknown ID number");
         return res
           .status(401)
           .json({ success: false, message: "Invalid ID Number or password" });
       }
       const user = rows[0];
       const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch)
+      if (!isMatch) {
+        logSignIn(user, false, "wrong password");
         return res
           .status(401)
           .json({ success: false, message: "Invalid ID Number or password" });
+      }
+      logSignIn(user, true);
 
       const payload = {
         id: user.id,
@@ -1103,6 +1180,332 @@ app.delete("/api/admin/dropdown-options/:id", verifyToken, verifySuperAdmin, asy
   }
 });
 
+// ====== ACTIVITY LOG (super admin) ======
+// Read side of the audit trail written by activityLog.js.
+const PAGE_LABELS = {
+  "/dashboard": "the dashboard",
+  "/createrecord": "Create Record",
+  "/all": "All Records",
+  "/all-records": "All Records",
+  "/analytics": "Analytics",
+  "/reports": "Reports",
+  "/trackrecord": "Tracking",
+  "/createuser": "Create User",
+  "/incoming-documents": "Incoming Documents",
+  "/dashboard/all-users": "All Users",
+  "/office-management": "Office Management",
+  "/dropdown-management": "Dropdown Options",
+  "/database-backup": "Database Backup",
+  "/activity-logs": "Activity Logs",
+  "/user-dashboard": "My Dashboard",
+  "/finished-documents": "Finished Documents",
+  "/routing-slip-settings": "Routing Slip Settings",
+};
+
+// POST /api/activity/page-view — the SPA reports each page it opens
+app.post("/api/activity/page-view", verifyToken, (req, res) => {
+  const rawPath = String(req.body?.path || "").split("?")[0].slice(0, 200);
+  if (!rawPath.startsWith("/")) {
+    return res.status(400).json({ error: "path required" });
+  }
+  const label = PAGE_LABELS[rawPath] || rawPath;
+  activityLogger.log({
+    user: req.user,
+    action: `Opened ${label}`,
+    method: "POST",
+    path: "/api/activity/page-view",
+    details: rawPath,
+    status: 200,
+    ip: activityLogger.clientIp(req),
+    userAgent: req.get?.("user-agent") || "",
+  });
+  res.json({ ok: true });
+});
+
+// GET /api/admin/activity — paged, filterable audit trail
+app.get("/api/admin/activity", verifyToken, verifySuperAdmin, async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(200, Math.max(10, parseInt(req.query.limit, 10) || 50));
+    const offset = (page - 1) * limit;
+
+    const where = [];
+    const params = [];
+    const q = String(req.query.q || "").trim();
+    if (q) {
+      where.push("(action LIKE ? OR details LIKE ? OR user_name LIKE ? OR path LIKE ?)");
+      const like = `%${q}%`;
+      params.push(like, like, like, like);
+    }
+    if (req.query.userId) {
+      where.push("user_id = ?");
+      params.push(Number(req.query.userId));
+    }
+    if (req.query.role) {
+      where.push("user_role = ?");
+      params.push(req.query.role);
+    }
+    if (req.query.from) {
+      where.push("created_at >= ?");
+      params.push(`${req.query.from} 00:00:00`);
+    }
+    if (req.query.to) {
+      where.push("created_at <= ?");
+      params.push(`${req.query.to} 23:59:59`);
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    const countRows = await queryPromise(
+      `SELECT COUNT(*) AS total FROM activity_logs ${whereSql}`,
+      params
+    );
+    const rows = await queryPromise(
+      `SELECT id, user_id, user_name, user_role, office, action, method, path,
+              details, status_code, ip, created_at
+         FROM activity_logs ${whereSql}
+        ORDER BY id DESC
+        LIMIT ${limit} OFFSET ${offset}`,
+      params
+    );
+
+    const total = countRows?.[0]?.total || 0;
+    res.json({
+      rows,
+      total,
+      page,
+      limit,
+      pages: Math.max(1, Math.ceil(total / limit)),
+    });
+  } catch (err) {
+    console.error("[activity] query failed:", err.message);
+    res.status(500).json({ error: "Could not load the activity log", detail: err.message });
+  }
+});
+
+// GET /api/admin/activity/users — accounts that appear in the log
+app.get("/api/admin/activity/users", verifyToken, verifySuperAdmin, async (req, res) => {
+  try {
+    const rows = await queryPromise(
+      `SELECT user_id, MAX(user_name) AS name, MAX(user_role) AS role, COUNT(*) AS actions
+         FROM activity_logs
+        WHERE user_id IS NOT NULL
+        GROUP BY user_id
+        ORDER BY name ASC`
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Could not load activity users", detail: err.message });
+  }
+});
+
+// ====== DATABASE BACKUP / RESTORE (super admin) ======
+// Backups are produced with the `mysqldump` / `mysql` command-line tools that
+// ship with XAMPP, WAMP or a standalone MySQL/MariaDB server, so the .sql file
+// is a normal dump the admin can also open in phpMyAdmin or move to another
+// machine. Set MYSQL_DUMP_BIN / MYSQL_CLIENT_BIN to override the paths.
+function findMysqlTool(name, envKey) {
+  const explicit = process.env[envKey];
+  if (explicit && fs.existsSync(explicit)) return explicit;
+  const file = process.platform === "win32" ? `${name}.exe` : name;
+  const pathDirs = String(process.env.PATH || "").split(path.delimiter).filter(Boolean);
+  for (const dir of pathDirs) {
+    const candidate = path.join(dir, file);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  const known = [
+    `C:\\xampp\\mysql\\bin\\${file}`,
+    `C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\${file}`,
+    `C:\\Program Files\\MySQL\\MySQL Server 8.4\\bin\\${file}`,
+    `C:\\Program Files\\MariaDB 10.4\\bin\\${file}`,
+    `C:\\Program Files\\MariaDB 10.11\\bin\\${file}`,
+    `/usr/bin/${name}`,
+    `/usr/local/bin/${name}`,
+    `/usr/local/mysql/bin/${name}`,
+  ];
+  for (const candidate of known) if (fs.existsSync(candidate)) return candidate;
+  return null;
+}
+
+function mysqlCliArgs() {
+  return [
+    `--host=${process.env.DB_HOST || "localhost"}`,
+    `--port=${Number(process.env.DB_PORT || 3306)}`,
+    `--user=${process.env.DB_USER || "root"}`,
+    "--default-character-set=utf8mb4",
+  ];
+}
+
+function mysqlCliEnv() {
+  // MYSQL_PWD keeps the password out of the process list.
+  return { ...process.env, MYSQL_PWD: process.env.DB_PASS || "" };
+}
+
+function dbName() {
+  return process.env.DB_NAME || "records_db";
+}
+
+const dbImportUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 256 * 1024 * 1024 }, // 256 MB is plenty for this schema
+  fileFilter: (req, file, cb) => {
+    const ok = /\.(sql|txt|dump)$/i.test(file.originalname || "");
+    cb(ok ? null : new Error("Only .sql backup files are accepted"), ok);
+  },
+});
+
+// GET /api/admin/database/backup — download a full .sql dump
+app.get("/api/admin/database/backup", verifyToken, verifySuperAdmin, async (req, res) => {
+  const dumpBin = findMysqlTool("mysqldump", "MYSQL_DUMP_BIN");
+  if (!dumpBin) {
+    return res.status(503).json({
+      error: "mysqldump was not found on this machine.",
+      detail:
+        "Install the MySQL client tools, or set MYSQL_DUMP_BIN in the server .env to the full path of mysqldump (for XAMPP: C:\\xampp\\mysql\\bin\\mysqldump.exe).",
+    });
+  }
+
+  const stamp = new Date()
+    .toISOString()
+    .replace(/[:T]/g, "-")
+    .replace(/\..+$/, "");
+  const fileName = `${dbName()}-backup-${stamp}.sql`;
+  const tmpFile = path.join(os.tmpdir(), `rtms-backup-${Date.now()}-${process.pid}.sql`);
+  const args = [
+    ...mysqlCliArgs(),
+    "--single-transaction", // consistent snapshot without locking the app out
+    "--quick",
+    "--skip-lock-tables",
+    "--routines",
+    "--events",
+    "--triggers",
+    "--hex-blob",
+    "--add-drop-table",
+    `--result-file=${tmpFile}`,
+    dbName(),
+  ];
+
+  try {
+    await new Promise((resolve, reject) => {
+      execFile(
+        dumpBin,
+        args,
+        { env: mysqlCliEnv(), windowsHide: true, maxBuffer: 16 * 1024 * 1024 },
+        (err, stdout, stderr) => {
+          if (err) {
+            return reject(
+              new Error((stderr || err.message || "mysqldump failed").trim().slice(0, 1500))
+            );
+          }
+          if (stderr && stderr.trim()) {
+            console.warn("[db-backup] mysqldump warnings:", stderr.trim().slice(0, 500));
+          }
+          resolve();
+        }
+      );
+    });
+
+    const size = fs.existsSync(tmpFile) ? fs.statSync(tmpFile).size : 0;
+    if (!size) throw new Error("mysqldump produced an empty file.");
+
+    // GET requests are not logged by the middleware, so record this one here.
+    activityLogger.log({
+      user: req.user,
+      action: "Downloaded a database backup",
+      method: "GET",
+      path: "/api/admin/database/backup",
+      details: `${fileName} · ${(size / 1024).toFixed(1)} KB`,
+      status: 200,
+      ip: activityLogger.clientIp(req),
+      userAgent: req.get?.("user-agent") || "",
+    });
+
+    res.download(tmpFile, fileName, (downloadErr) => {
+      fs.unlink(tmpFile, () => {});
+      if (downloadErr && !res.headersSent) {
+        res.status(500).json({ error: "Backup download failed", detail: downloadErr.message });
+      }
+    });
+  } catch (err) {
+    fs.unlink(tmpFile, () => {});
+    console.error("[db-backup] failed:", err.message);
+    res.status(500).json({ error: "Backup failed", detail: err.message });
+  }
+});
+
+// POST /api/admin/database/restore — import a .sql dump over the live database
+app.post("/api/admin/database/restore", verifyToken, verifySuperAdmin, (req, res) => {
+  dbImportUpload.single("file")(req, res, (uploadErr) => {
+    if (uploadErr) {
+      return res.status(400).json({ error: uploadErr.message });
+    }
+    if (!req.file || !req.file.size) {
+      return res.status(400).json({ error: "No backup file uploaded" });
+    }
+
+    const clientBin = findMysqlTool("mysql", "MYSQL_CLIENT_BIN");
+    if (!clientBin) {
+      return res.status(503).json({
+        error: "The mysql command-line client was not found on this machine.",
+        detail:
+          "Install the MySQL client tools, or set MYSQL_CLIENT_BIN in the server .env to the full path of mysql (for XAMPP: C:\\xampp\\mysql\\bin\\mysql.exe).",
+      });
+    }
+
+    const sql = req.file.buffer.toString("utf8");
+    if (sql.includes("\u0000")) {
+      return res.status(400).json({ error: "That file is not a text SQL dump." });
+    }
+    if (!/(create|insert|replace|alter|drop|set)\s/i.test(sql.slice(0, 200000))) {
+      return res.status(400).json({ error: "No SQL statements were found in that file." });
+    }
+
+    const args = [...mysqlCliArgs(), "--max-allowed-packet=256M", dbName()];
+    let child;
+    try {
+      child = spawn(clientBin, args, { env: mysqlCliEnv(), windowsHide: true });
+    } catch (spawnErr) {
+      return res.status(500).json({ error: "Restore failed", detail: spawnErr.message });
+    }
+
+    let stderr = "";
+    let settled = false;
+    const finish = (status, payload) => {
+      if (settled) return;
+      settled = true;
+      res.status(status).json(payload);
+    };
+
+    child.stderr.on("data", (d) => {
+      stderr += d.toString();
+    });
+    child.on("error", (e) =>
+      finish(500, { error: "Restore failed", detail: e.message })
+    );
+    child.on("close", (code) => {
+      if (code === 0) {
+        console.log(`[db-restore] restored ${req.file.size} bytes from ${req.file.originalname}`);
+        finish(200, {
+          message: "Database restored successfully.",
+          bytes: req.file.size,
+          filename: req.file.originalname,
+        });
+      } else {
+        console.error("[db-restore] failed:", stderr.slice(0, 500));
+        finish(500, {
+          error: "Restore failed",
+          detail:
+            stderr.trim().slice(0, 2000) || `mysql exited with code ${code}`,
+        });
+      }
+    });
+    // The client can close the pipe early when the SQL is invalid; that is
+    // reported through the exit code above, not as an unhandled stream error.
+    child.stdin.on("error", () => {});
+    child.stdin.write(req.file.buffer);
+    child.stdin.end();
+  });
+});
+
 // ====== CONTROL NUMBER ======
 // Counter continues across days (never resets).
 // Format: YYMMDD-NNN where NNN can be any number of digits.
@@ -1173,7 +1576,7 @@ app.get("/records", verifyToken, (req, res) => {
   });
 });
 
-app.post("/records", upload.array("files"), async (req, res) => {
+app.post("/records", softAuth, upload.array("files"), async (req, res) => {
   try {
     const body = req.body || {};
     const control_number = pickField(body.control_number);
@@ -1233,13 +1636,16 @@ app.post("/records", upload.array("files"), async (req, res) => {
     // Link any uploaded attachments to the record.
     await storeUploadedFiles(recordId, req.files);
 
-    // Track the record movement to its initial office.
+    // Track the record movement to its initial office. The actor is the account
+    // that created the document so the Operations Stream can name the creator;
+    // anonymous callers keep the old "System" placeholder.
+    const creator = String(req.user?.name || "").trim();
     await logRecordMovement(
       recordId,
       "CREATED",
       "Unknown",
       currentOffice,
-      "System"
+      creator || "System"
     );
 
     io.emit("recordUpdated", {
@@ -2758,7 +3164,189 @@ app.put("/api/settings/routing-slip", verifyToken, verifyAdmin, async (req, res)
 });
 
 // ====== Start ======
-const PORT = process.env.PORT || 8081;
-server.listen(PORT, () => {
-  console.log(`✅ Backend + Socket.IO on ${PORT}`);
+// Listening is more than a one-line listen() here because the usual cause of
+// EADDRINUSE on the dev port is an earlier copy of this very backend: a
+// terminal closed with the X button, a killed nodemon child, or a leftover
+// background process. Instead of dying with a stack trace, startup clears a
+// stale copy of *this* backend out of the way and binds the port. A watcher
+// (nodemon) or a genuinely different program is never killed — it is reported
+// with a way forward.
+const PORT = Number(process.env.PORT) || 8081;
+const SELF = path.resolve(__filename);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Command line of a PID plus its parent's, or null when it can't be read. */
+function processInfo(pid) {
+  try {
+    if (process.platform === "win32") {
+      // Get-CimInstance is the supported replacement for the removed wmic.
+      const script = [
+        `$p = Get-CimInstance Win32_Process -Filter "ProcessId=${pid}"`,
+        `if ($p) { Write-Output $p.CommandLine; ` +
+          `$pp = Get-CimInstance Win32_Process -Filter "ProcessId=$($p.ParentProcessId)"; ` +
+          `Write-Output $pp.CommandLine }`,
+      ].join("; ");
+      const out = execFileSync(
+        "powershell.exe",
+        ["-NoProfile", "-NonInteractive", "-Command", script],
+        { encoding: "utf8", timeout: 10000, windowsHide: true }
+      );
+      const [args = "", parentArgs = ""] = out.split(/\r?\n/);
+      return { args: args.trim(), parentArgs: parentArgs.trim() };
+    }
+    const args = execFileSync("ps", ["-p", String(pid), "-o", "args="], {
+      encoding: "utf8",
+      timeout: 5000,
+    }).trim();
+    let parentArgs = "";
+    try {
+      const ppid = execFileSync("ps", ["-p", String(pid), "-o", "ppid="], {
+        encoding: "utf8",
+        timeout: 5000,
+      }).trim();
+      parentArgs = execFileSync("ps", ["-p", ppid, "-o", "args="], {
+        encoding: "utf8",
+        timeout: 5000,
+      }).trim();
+    } catch {
+      /* parent already gone */
+    }
+    return { args, parentArgs };
+  } catch {
+    return null; // process gone, or no way to ask — treated as "not identified"
+  }
+}
+
+/** PID listening on `port`, or null when nothing is (or it can't be read). */
+function portOwner(port) {
+  try {
+    if (process.platform === "win32") {
+      const out = execFileSync("netstat", ["-ano", "-p", "TCP"], {
+        encoding: "utf8",
+        timeout: 10000,
+        windowsHide: true,
+      });
+      for (const line of out.split(/\r?\n/)) {
+        // proto   local address        foreign address      state       pid
+        const cols = line.trim().split(/\s+/);
+        if (cols.length < 5) continue;
+        if (cols[3] !== "LISTENING") continue;
+        if (!cols[1].endsWith(`:${port}`)) continue;
+        const pid = Number(cols[4]);
+        if (Number.isInteger(pid) && pid > 0) return pid;
+      }
+      return null;
+    }
+    const out = execFileSync(
+      "lsof",
+      ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"],
+      { encoding: "utf8", timeout: 10000 }
+    );
+    const pid = Number(out.split(/\s+/).filter(Boolean)[0]);
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null; // lsof missing, or nothing is listening
+  }
+}
+
+/** Is `cmd` an invocation of this very backend file? */
+function isThisBackend(cmd) {
+  if (!cmd) return false;
+  const invoked = (cmd.match(/(?:^|[\s"'])([^\s"']*server\.js)/) || [])[1];
+  if (!invoked) return false;
+  // Started as `node server.js` (relative) or by an absolute path to this file.
+  return !path.isAbsolute(invoked) || path.resolve(invoked) === SELF;
+}
+
+/** Free the port from a stale copy of this backend. false = cannot start. */
+async function clearStaleBackend() {
+  const pid = portOwner(PORT);
+  if (!pid || pid === process.pid) return true;
+
+  const info = processInfo(pid);
+  if (!info) {
+    console.error(`\n✖ Port ${PORT} is already in use (PID ${pid}) and that process could not`);
+    console.error(`  be identified. Stop it, then run this again.\n`);
+    return false;
+  }
+
+  if (/nodemon/.test(info.args) || /nodemon/.test(info.parentArgs)) {
+    console.error(`\n✖ Port ${PORT} is already served by a nodemon watcher (PID ${pid}).`);
+    console.error(`  It reloads this backend whenever a file changes, so there is nothing to`);
+    console.error(`  start here — use that terminal, or press Ctrl+C in it and try again.\n`);
+    return false;
+  }
+
+  if (!isThisBackend(info.args)) {
+    console.error(`\n✖ Port ${PORT} is held by another program, not by this backend.`);
+    console.error(`  PID ${pid}: ${info.args.slice(0, 160)}`);
+    console.error(`  Stop that program, or give this backend a different PORT in server/.env`);
+    console.error(`  (and update the proxy targets in client/src/setupProxy.js).\n`);
+    return false;
+  }
+
+  console.log(
+    `↻ Port ${PORT} was still held by an earlier run of this backend (PID ${pid}) — closing it.`
+  );
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    try {
+      execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true });
+    } catch {
+      /* already gone */
+    }
+  }
+  for (let i = 0; i < 40 && portOwner(PORT) !== null; i++) await sleep(250);
+  if (portOwner(PORT) === null) return true;
+
+  console.error(`\n✖ PID ${pid} did not release port ${PORT}. Stop it manually and try again.\n`);
+  return false;
+}
+
+// Graceful, non-crashing report for a port taken between the check and the bind.
+server.on("error", (err) => {
+  if (err && err.code === "EADDRINUSE") {
+    console.error(`\n✖ Port ${PORT} is in use — something grabbed it while this backend started.`);
+    console.error(`  Just run this again: an earlier copy is closed automatically.\n`);
+  } else {
+    console.error("✖ Server error:", err);
+  }
+  process.exit(1);
 });
+
+// Ctrl+C / kill now releases the port immediately, which is what stops stale
+// instances from piling up in the first place.
+let closing = false;
+function shutdown(signal) {
+  if (closing) return;
+  closing = true;
+  console.log(`\n${signal} received — closing backend on port ${PORT}…`);
+  const finish = () => process.exit(0);
+  const timer = setTimeout(finish, 3000);
+  if (typeof timer.unref === "function") timer.unref();
+  try {
+    io.close();
+  } catch {
+    /* socket layer already down */
+  }
+  try {
+    db.end(finish);
+  } catch {
+    finish();
+  }
+}
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+(async () => {
+  if (!(await clearStaleBackend())) process.exit(1);
+  try {
+    await activityLogger.ensureTable();
+  } catch (err) {
+    console.error("Activity log table:", err.message);
+  }
+  server.listen(PORT, () => {
+    console.log(`✅ Backend + Socket.IO on ${PORT}`);
+  });
+})();

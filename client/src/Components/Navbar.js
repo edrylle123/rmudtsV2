@@ -32,6 +32,8 @@ export default function Navbar() {
     "/routing-slip-settings": "Routing Slip Settings",
     "/finished-documents": "Finished Documents",
     "/incoming-documents": "Incoming Documents",
+    "/database-backup": "Database Backup",
+    "/activity-logs": "Activity Logs",
   };
 
   const title = pageTitles[location.pathname] || "Records System";

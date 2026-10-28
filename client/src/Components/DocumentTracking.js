@@ -177,7 +177,7 @@ export default function DocumentTracking() {
             <div className="card-header">
               <h3 className="mb-0">Recent Movements</h3>
             </div>
-            <div className="table-responsive">
+            <div className="table-responsive rs-stack">
               <table className="table table-striped align-middle mb-0">
                 <thead>
                   <tr>
@@ -194,9 +194,9 @@ export default function DocumentTracking() {
                   {recentMovements.length ? (
                     recentMovements.map((mv) => (
                       <tr key={mv.id}>
-                        <td>{mv.record_id}</td>
-                        <td>{mv.title || "—"}</td>
-                        <td>
+                        <td data-label="Ref">{mv.record_id}</td>
+                        <td data-label="Title">{mv.title || "—"}</td>
+                        <td data-label="Action">
                           <span
                             className={`status-badge ${
                               mv.action === "RELEASED"
@@ -207,15 +207,15 @@ export default function DocumentTracking() {
                             {mv.action}
                           </span>
                         </td>
-                        <td>{mv.from_office}</td>
-                        <td>{mv.to_office}</td>
-                        <td>{mv.actor}</td>
-                        <td>{new Date(mv.timestamp).toLocaleString()}</td>
+                        <td data-label="From">{mv.from_office}</td>
+                        <td data-label="To">{mv.to_office}</td>
+                        <td data-label="Actor">{mv.actor}</td>
+                        <td data-label="Time">{new Date(mv.timestamp).toLocaleString()}</td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="7" className="text-center text-muted">
+                      <td colSpan="7" data-label="" className="text-center text-muted">
                         No recent movements
                       </td>
                     </tr>

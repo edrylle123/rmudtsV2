@@ -1,0 +1,378 @@
+/* ============================================================
+   Activity Logs page
+   ============================================================ */
+.al-page {
+  padding-bottom: 32px;
+}
+
+.al-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.al-header-icon {
+  font-size: 1.4rem;
+  color: var(--brand-600);
+  background: var(--brand-100);
+  border-radius: 12px;
+  padding: 12px;
+  box-sizing: content-box;
+  flex-shrink: 0;
+}
+
+.al-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: var(--text);
+}
+
+.al-subtitle {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  max-width: 62ch;
+}
+
+/* ---------- Filters ---------- */
+.al-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: 12px 16px;
+  margin-bottom: 14px;
+}
+
+.al-filter {
+  flex: 1 1 150px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.al-filter-search {
+  flex: 2 1 240px;
+}
+
+.al-filter-actions {
+  flex: 0 0 auto;
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
+}
+
+.al-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.al-input {
+  width: 100%;
+  font-size: 0.84rem;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.al-input:focus {
+  border-color: var(--brand-400);
+  box-shadow: 0 0 0 0.15rem rgba(40, 98, 58, 0.12);
+}
+
+.al-search {
+  position: relative;
+}
+
+.al-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.al-search .al-input {
+  padding-left: 30px;
+}
+
+/* ---------- Buttons ---------- */
+.al-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text-2);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+
+.al-btn:hover:not(:disabled) {
+  border-color: var(--brand-400);
+  color: var(--brand-700);
+  background: var(--brand-50);
+}
+
+.al-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.al-btn-ghost {
+  min-height: 36px;
+}
+
+.al-btn-clear {
+  border-color: #fecdca;
+  color: #b42318;
+}
+
+.al-btn-clear:hover {
+  border-color: #f97066;
+  color: #912018;
+  background: #fef3f2;
+}
+
+/* ---------- Summary + states ---------- */
+.al-summary {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.al-loading {
+  font-style: italic;
+}
+
+.al-auto {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.al-auto-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--brand-400);
+  box-shadow: 0 0 0 0 rgba(74, 148, 96, 0.55);
+  animation: al-pulse 2.5s ease-out infinite;
+}
+
+@keyframes al-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(74, 148, 96, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(74, 148, 96, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(74, 148, 96, 0);
+  }
+}
+
+.al-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fef3f2;
+  border: 1px solid #fecdca;
+  color: #b42318;
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 0.84rem;
+  margin-bottom: 12px;
+}
+
+/* ---------- Table ---------- */
+.al-table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  overflow: auto;
+  max-height: calc(100dvh - 340px);
+}
+
+.al-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.83rem;
+}
+
+.al-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--brand-50);
+  color: var(--text-2);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.al-table tbody td {
+  padding: 10px 14px;
+  border-bottom: 1px solid #eef2ef;
+  vertical-align: top;
+  color: var(--text);
+}
+
+.al-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.al-table tbody tr:hover {
+  background: #f8faf9;
+}
+
+.al-when {
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.al-user {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.al-user-icon {
+  color: var(--brand-300);
+  font-size: 1rem;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.al-user-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.al-user-name {
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.al-user-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.al-action {
+  font-weight: 600;
+  color: var(--brand-700);
+}
+
+.al-badge-failed {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #fef3f2;
+  border: 1px solid #fecdca;
+  color: #b42318;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.al-details {
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+  max-width: 380px;
+}
+
+.al-ip {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.al-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 32px 14px !important;
+}
+
+/* ---------- Pager ---------- */
+.al-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.al-pager-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  min-width: 120px;
+  text-align: center;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 992px) {
+  .al-table-wrap {
+    max-height: none;
+  }
+}
+
+@media (max-width: 576px) {
+  .al-page {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .al-title {
+    font-size: 1.25rem;
+  }
+  .al-filter,
+  .al-filter-search {
+    flex: 1 1 100%;
+  }
+  .al-filter-actions {
+    flex: 1 1 100%;
+  }
+  .al-filter-actions .al-btn {
+    flex: 1;
+    justify-content: center;
+  }
+  .al-details {
+    max-width: none;
+  }
+}

@@ -1,0 +1,35 @@
+# =====================================================================
+# RMUDTS — web root rules shipped with the release archive
+# =====================================================================
+# These rules are deliberately minimal so nothing can break before the
+# installation wizard has run. The wizard replaces this file with a fuller
+# version (rewrite rules, front controller, blocked extensions) once it knows
+# the real paths.
+
+<IfModule mod_autoindex.c>
+  # Never render a directory listing while the package is being set up.
+  Options -Indexes
+  IndexIgnore *
+</IfModule>
+
+DirectoryIndex index.php index.html
+
+# Configuration, dumps, locks and editor droppings are never served.
+<FilesMatch "(^\.|\.(env|lock|sql|sqlite|log|ini|bak|old|orig|save|swp|swo|dist|tar|gz|zip|sh|ps1)$)">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# The installer must not be rewritten into anything else while it runs.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^install(/.*)?$ - [L]
+</IfModule>
+
+# Note: JSON files must stay reachable — the React build ships manifest.json
+# and asset-manifest.json. Anything sensitive lives outside the web root.

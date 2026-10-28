@@ -49,42 +49,53 @@ function OperationsStream({ onOpenRecord }) {
   };
 
   const describeEvent = (e) => {
-    const actor = e.actor && e.actor !== "System" ? e.actor : "";
+    // "System" is the placeholder older installs wrote for creations that were
+    // not tied to an account — it names nobody, so it is dropped.
+    const actor = e.actor ? String(e.actor).trim() : "";
+    const creator = actor && actor !== "System" ? actor : "";
     const cn = e.control_number || "record";
-    // Creator is an admin (Records Management Unit / Super Admin)?
-    const isAdminActor = e.actor_is_admin === 1 || e.actor_is_admin === true;
-    const actorLabel = actor ? (isAdminActor ? `${actor} (Admin)` : actor) : "the admin";
     // Creation events have no meaningful origin: from_office is NULL (new rows)
     // or "Unknown" (legacy rows). Normalize so they never read as a forward.
     const isCreation =
       e.action === "CREATED" ||
       !e.from_office ||
       e.from_office === "Unknown";
+
     if (!isCreation && e.from_office && e.to_office) {
       return (
         <>
           <strong>{cn}</strong> forwarded from {e.from_office} to {e.to_office}
-          {actor && <> by {actor}</>}
+          {creator && <> by {creator}</>}
         </>
       );
     }
-    if (e.to_office) {
-      // Created by admin: "created by the admin and forwarded to <office>"
-      if (isAdminActor || (!actor && e.action === "CREATED")) {
-        return (
-          <>
-            <strong>{cn}</strong> created by {actorLabel} and forwarded to{" "}
-            <strong>{e.to_office}</strong>
-          </>
-        );
-      }
+
+    if (isCreation) {
+      // Name the account that created the document, e.g.
+      // "261001-2490 Francis Klause E. Imperio created and delivered to <office>".
+      // Legacy rows carry no account, so they keep the old, name-free wording.
       return (
         <>
-          <strong>{cn}</strong> created and delivered to {e.to_office}
-          {actor && <> by {actor}</>}
+          <strong>{cn}</strong>
+          {creator && <> {creator}</>} created
+          {e.to_office && (
+            <>
+              {" "}and delivered to <strong>{e.to_office}</strong>
+            </>
+          )}
         </>
       );
     }
+
+    if (e.to_office) {
+      return (
+        <>
+          <strong>{cn}</strong> delivered to <strong>{e.to_office}</strong>
+          {creator && <> by {creator}</>}
+        </>
+      );
+    }
+
     return (
       <>
         Activity on <strong>{cn}</strong>

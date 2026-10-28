@@ -177,9 +177,9 @@ export default function DropdownManagement() {
 
           {error && <div className="alert alert-danger">{error}</div>}
 
-          <div className="d-flex gap-3">
+          <div className="d-flex gap-3 dm-layout">
             {/* Category tabs */}
-            <div style={{ minWidth: '220px' }}>
+            <div className="dm-categories">
               {CATEGORIES.map((cat) => {
                 const count = countFor(cat);
                 return (
@@ -220,7 +220,11 @@ export default function DropdownManagement() {
                 <input
                   type="text"
                   className="form-control"
-                  placeholder={`Add new ${activeCat?.label}${isOfficeTab ? "" : " option"}...`}
+                  placeholder={
+                    activeCategory === "concerned_personnel"
+                      ? "Add new person — Last Name, First Name M.I."
+                      : `Add new ${activeCat?.label}${isOfficeTab ? "" : " option"}...`
+                  }
                   value={newValues[activeCategory] || ""}
                   onChange={(e) =>
                     setNewValues((prev) => ({

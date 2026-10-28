@@ -11,3 +11,27 @@
   border-radius: var(--radius-md);
   background: var(--surface);
 }
+
+/* Category tabs sit beside the list on wide screens. The min-width used to be
+   an inline style, which could not be relaxed on small screens: the tabs kept
+   220px, the list column collapsed to 0 and the clipped page could not show
+   it. It is now a class so the narrow-screen rule below can take effect.
+   The tabs hold a fixed column width: their buttons are w-100, which otherwise
+   makes the intrinsic width of the column swallow the whole row and squeeze the
+   options list down to a sliver. */
+.dm-categories {
+  flex: 0 0 230px;
+  min-width: 0;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 768px) {
+  /* Stack the category tabs above the list instead of side by side */
+  .dm-layout {
+    flex-direction: column;
+  }
+  .dm-categories {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+}

@@ -1107,18 +1107,18 @@ const resetForm = () => {
                 />
               </div> */}
 
-              {/* Office/Requestor — autocomplete for Internal (type to filter),
-                  free-text for External (user-defined) */}
+              {/* Requestor — autocomplete of the office list for Internal, a free
+                  text "Agency" field for External (user-defined) */}
               {isExternalOrigin ? (
                 <div className="col-md-6">
-                  <label className="form-label">Office/Requestor *</label>
+                  <label className="form-label">Agency *</label>
                   <input
                     className="form-control"
                     name="office_requestor"
                     value={formData.office_requestor ?? ""}
                     onChange={handleChange}
                     required
-                    placeholder="Enter office or requestor name"
+                    placeholder="Enter agency name"
                   />
                   <div className="invalid-feedback">This field is required.</div>
                 </div>

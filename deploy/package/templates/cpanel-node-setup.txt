@@ -1,0 +1,59 @@
+RMUDTS 1.0.0 - cPanel Node.js application setup
+=================================================================
+
+The installer cannot create the Node.js application for you. cPanel
+does not expose that action through an API on shared hosting, so this
+one step is performed by a human in cPanel. Everything the application
+needs has already been prepared.
+
+Values to enter
+---------------
+Node.js version   : 20 LTS (or the newest version the host offers)
+Application mode  : Production
+Application root  : rmudts-app
+Application URL   : api.domain.com
+Startup file      : server.js
+Environment file  : /home/CPANEL_USER/rmudts-config/.env
+
+Commands (cPanel -> Terminal)
+-----------------------------
+cd /home/CPANEL_USER/rmudts-app
+npm ci --omit=dev
+
+Steps
+-----
+1. Open Setup Node.js App (Application Manager on some hosts).
+2. Create Application, choose Production.
+3. Set the domain to the API subdomain, e.g. api.domain.com.
+   Create the subdomain first under cPanel -> Domains if needed.
+   Do NOT point it at public_html/rmudts.
+4. Application root: rmudts-app
+5. Startup file: server.js
+6. Node.js version: 20 LTS
+7. Save (Create). A Passenger entry point and virtual environment
+   are created.
+8. Install dependencies: npm ci --omit=dev (or Run NPM Install).
+9. Leave the environment file in rmudts-config/.env. Do not create a
+   second .env with different values and do not paste secrets into the
+   cPanel variable form unless the host requires it.
+10. Restart the application. Without a Restart button:
+    mkdir -p /home/CPANEL_USER/rmudts-app/tmp
+    touch /home/CPANEL_USER/rmudts-app/tmp/restart.txt
+11. If it does not start, read the application log on the same page.
+    "Cannot find module" means dependencies were not installed.
+12. Test the API root: https://api.domain.com/ must return JSON.
+13. Test the health endpoint: https://api.domain.com/api/health must
+    return {"status":"ok","database":"connected"}.
+14. Test Socket.IO:
+    https://api.domain.com/socket.io/?EIO=4&transport=polling
+    must return a handshake beginning with 0{ ... not 404.
+15. Open the frontend at https://domain.com/rmudts/ and sign in.
+
+Verification URLs
+-----------------
+Frontend : https://domain.com/rmudts/
+API root : https://api.domain.com/
+Health   : https://api.domain.com/api/health
+Socket.IO: https://api.domain.com/socket.io/?EIO=4&transport=polling
+
+This file contains no passwords, keys or tokens.

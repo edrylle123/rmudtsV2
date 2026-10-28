@@ -563,45 +563,160 @@
 }
 
 /* --- Responsive --- */
+
+/* Tablet / narrow desktop: let the action column shrink so the table never
+   forces itself wider than its container. */
+@media (max-width: 900px) {
+  .om-th-actions {
+    width: auto;
+  }
+}
+
+/* Phone: the toolbar stacks and every table row becomes a card, so the action
+   buttons are reachable without scrolling sideways. */
 @media (max-width: 640px) {
+  .om-header {
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .om-title {
+    font-size: 1.15rem;
+  }
+
+  .om-subtitle {
+    font-size: 0.82rem;
+  }
+
   .om-toolbar {
     flex-direction: column;
+    gap: 10px;
+    margin-bottom: 14px;
   }
 
   .om-add-form {
     min-width: unset;
+    flex-wrap: wrap;
+  }
+
+  .om-input {
+    min-width: 0;
   }
 
   .om-search-bar {
     min-width: unset;
+    width: 100%;
   }
 
+  /* 16px keeps mobile browsers from zooming when an input is focused */
+  .om-input,
+  .om-search-input,
+  .om-assign-select,
+  .om-edit-input-inline {
+    font-size: 16px;
+  }
+
+  /* --- Table -> stacked cards --- */
   .om-table-wrap {
-    font-size: 0.82rem;
+    border: none;
+    background: transparent;
+    overflow: visible;
   }
 
-  .om-table th,
+  .om-table,
+  .om-table tbody,
+  .om-table tr,
   .om-table td {
-    padding: 8px 10px;
+    display: block;
+    width: 100%;
   }
 
-  .om-th-date {
+  .om-table thead {
     display: none;
+  }
+
+  .om-table tr {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+
+  .om-table td {
+    padding: 0;
+    border-bottom: none;
+    text-align: left;
+  }
+
+  .om-td-name {
+    font-size: 0.95rem;
+    margin-bottom: 6px;
+  }
+
+  .om-table td:nth-child(2) {
+    margin-bottom: 8px;
   }
 
   .om-td-date {
-    display: none;
+    display: block;
+    margin-bottom: 10px;
+    font-size: 0.8rem;
   }
 
-  .om-header {
-    flex-direction: column;
+  /* Needs to out-specify the `.om-table td` rule above */
+  .om-table td.om-td-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-start;
+    white-space: normal;
+  }
+
+  .om-td-actions .om-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .om-office-count {
+    margin-top: 6px;
+    font-size: 0.8rem;
+  }
+
+  /* --- Members modal --- */
+  .om-modal {
+    max-height: 95vh;
+    max-height: 95dvh;
+    border-radius: 12px;
+  }
+
+  .om-modal-header,
+  .om-modal-body,
+  .om-modal-footer {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .om-modal-title h3 {
+    font-size: 1rem;
   }
 
   .om-assign-section {
     flex-wrap: wrap;
+    gap: 8px;
   }
 
-  .om-modal {
-    max-height: 95vh;
+  .om-assign-select {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .om-member-row {
+    flex-wrap: wrap;
+  }
+
+  .om-btn-unassign {
+    margin-left: auto;
   }
 }

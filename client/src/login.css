@@ -212,3 +212,445 @@
     padding: 28px 22px;
   }
 }
+
+/* ============================================================
+   LOGIN PAGE — interactive layer
+   New classes below are only rendered by src/login.js, so the
+   Signup screen keeps the baseline styles above untouched.
+   ============================================================ */
+
+.auth-page {
+  position: relative;
+  isolation: isolate;
+}
+.auth-page > .auth-brand,
+.auth-page > .auth-form-side {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- Entrance animation ---------- */
+@keyframes authFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.auth-anim {
+  animation: authFadeUp 0.55s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+
+/* ---------- Cursor spotlight (both appearances, subtle) ---------- */
+.auth-spotlight {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background: radial-gradient(
+    460px circle at var(--mx, 60%) var(--my, 40%),
+    rgba(74, 148, 96, 0.16),
+    transparent 70%
+  );
+  transition: opacity 0.35s ease;
+}
+
+/* ---------- Appearance switcher ---------- */
+.auth-ui-toggle {
+  position: fixed;
+  top: 20px;
+  right: 22px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-sm);
+}
+.auth-ui-toggle button {
+  position: relative;
+  z-index: 1;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-muted);
+  min-width: 86px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  transition: color 0.2s ease;
+}
+.auth-ui-toggle button.is-active {
+  color: #fff;
+}
+.auth-ui-thumb {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  bottom: 4px;
+  width: calc(50% - 4px);
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--brand-600), var(--brand-700));
+  box-shadow: 0 4px 14px rgba(40, 98, 58, 0.35);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.auth-ui-thumb--glass {
+  transform: translateX(100%);
+}
+
+/* ---------- Password reveal ---------- */
+.auth-pass-wrap {
+  position: relative;
+}
+.auth-pass-wrap input {
+  padding-right: 44px;
+}
+.auth-pass-toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.auth-pass-toggle:hover {
+  color: var(--brand-600);
+  background: rgba(40, 98, 58, 0.08);
+}
+
+/* ---------- Field feedback + caps lock hint ---------- */
+.auth-field.is-filled input {
+  border-color: var(--brand-300);
+  background: #f7fbf8;
+}
+.auth-hint--caps {
+  color: #b45309;
+  font-weight: 600;
+  animation: authFadeUp 0.25s ease both;
+}
+
+/* ---------- Tagline rotator ---------- */
+@keyframes authTagIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.auth-tagline-swap {
+  display: inline-block;
+  animation: authTagIn 0.5s ease both;
+}
+.auth-features li {
+  transition: transform 0.18s ease, color 0.18s ease;
+}
+.auth-features li:hover {
+  transform: translateX(4px);
+}
+.auth-logo {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.auth-logo:hover {
+  transform: translateY(-3px) scale(1.03);
+}
+
+/* ---------- Button: ripple, spinner, arrow ---------- */
+.auth-btn {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.auth-btn-arrow {
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+.auth-btn:hover:not(:disabled) .auth-btn-arrow {
+  transform: translateX(4px);
+}
+.auth-ripple {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.38);
+  transform: scale(0);
+  animation: authRipple 0.6s ease-out forwards;
+}
+@keyframes authRipple {
+  to {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+.auth-spinner {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  animation: authSpin 0.7s linear infinite;
+}
+@keyframes authSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================================
+   GLASS appearance — animated frosted backdrop
+   ============================================================ */
+.auth-page--glass {
+  padding: 26px;
+  gap: 24px;
+  background:
+    radial-gradient(1200px 720px at 12% 6%, rgba(52, 122, 73, 0.6), transparent 62%),
+    radial-gradient(900px 620px at 88% 88%, rgba(201, 151, 28, 0.26), transparent 64%),
+    linear-gradient(160deg, #04140b 0%, #071d10 46%, #0b2a17 100%);
+}
+.auth-page--glass .auth-spotlight {
+  opacity: 0.9;
+  background: radial-gradient(
+    520px circle at var(--mx, 60%) var(--my, 40%),
+    rgba(126, 240, 178, 0.16),
+    transparent 72%
+  );
+}
+
+.auth-glass-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.auth-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  will-change: transform;
+}
+.auth-orb--1 {
+  width: 44vw;
+  height: 44vw;
+  left: -10vw;
+  top: -14vw;
+  opacity: 0.55;
+  background: radial-gradient(circle at 35% 35%, #3fd07f, transparent 68%);
+  animation: authFloatA 22s ease-in-out infinite;
+}
+.auth-orb--2 {
+  width: 34vw;
+  height: 34vw;
+  right: -8vw;
+  top: 18vh;
+  opacity: 0.34;
+  background: radial-gradient(circle at 55% 45%, #e0b23f, transparent 66%);
+  animation: authFloatB 28s ease-in-out infinite;
+}
+.auth-orb--3 {
+  width: 40vw;
+  height: 40vw;
+  left: 26vw;
+  bottom: -18vw;
+  opacity: 0.4;
+  background: radial-gradient(circle at 50% 50%, #2fbf74, transparent 70%);
+  animation: authFloatC 32s ease-in-out infinite;
+}
+@keyframes authFloatA {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(6vw, 4vh, 0) scale(1.08);
+  }
+}
+@keyframes authFloatB {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-5vw, 6vh, 0) scale(1.12);
+  }
+}
+@keyframes authFloatC {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(4vw, -5vh, 0) scale(0.94);
+  }
+}
+
+.auth-grid {
+  position: absolute;
+  inset: -2px;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask-image: radial-gradient(70% 60% at 50% 40%, #000 30%, transparent 100%);
+  mask-image: radial-gradient(70% 60% at 50% 40%, #000 30%, transparent 100%);
+}
+
+/* Glass brand panel */
+.auth-page--glass .auth-brand {
+  max-width: none;
+  border-radius: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.11),
+    rgba(255, 255, 255, 0.03)
+  );
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  box-shadow: 0 26px 60px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.auth-page--glass .auth-brand::after {
+  opacity: 0.16;
+}
+
+/* Glass form card */
+.auth-page--glass .auth-card {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.15),
+    rgba(255, 255, 255, 0.06)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  color: #eefaf1;
+}
+.auth-page--glass .auth-card h2 {
+  color: #fff;
+  letter-spacing: 0.01em;
+}
+.auth-page--glass .auth-sub {
+  color: rgba(233, 246, 238, 0.72);
+}
+.auth-page--glass .auth-field label {
+  color: rgba(233, 246, 238, 0.86);
+}
+.auth-page--glass .auth-field input,
+.auth-page--glass .auth-field select {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+.auth-page--glass .auth-field input::placeholder {
+  color: rgba(233, 246, 238, 0.45);
+}
+.auth-page--glass .auth-field input:focus,
+.auth-page--glass .auth-field select:focus {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.45);
+  box-shadow: 0 0 0 3px rgba(126, 240, 178, 0.18),
+    0 0 26px rgba(74, 148, 96, 0.35);
+}
+.auth-page--glass .auth-field.is-filled input {
+  border-color: rgba(126, 240, 178, 0.45);
+  background: rgba(255, 255, 255, 0.1);
+}
+.auth-page--glass .auth-pass-toggle {
+  color: rgba(233, 246, 238, 0.6);
+}
+.auth-page--glass .auth-pass-toggle:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+}
+.auth-page--glass .auth-hint--caps {
+  color: #fbbf24;
+}
+.auth-page--glass .auth-error-box {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(248, 113, 113, 0.45);
+  color: #fecaca;
+}
+.auth-page--glass .auth-btn {
+  background: linear-gradient(135deg, #2f9d5c, #17492a);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+}
+.auth-page--glass .auth-ui-toggle {
+  background: rgba(8, 26, 16, 0.6);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.auth-page--glass .auth-ui-toggle button {
+  color: rgba(233, 246, 238, 0.6);
+}
+.auth-page--glass .auth-ui-toggle button.is-active {
+  color: #fff;
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .auth-anim,
+  .auth-tagline-swap,
+  .auth-hint--caps {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .auth-orb {
+    animation: none !important;
+  }
+  .auth-spotlight {
+    display: none;
+  }
+  .auth-ui-thumb,
+  .auth-btn-arrow {
+    transition: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .auth-page--glass {
+    padding: 18px;
+  }
+}
+@media (max-width: 480px) {
+  .auth-ui-toggle {
+    top: 12px;
+    right: 12px;
+  }
+  .auth-ui-toggle button {
+    min-width: 72px;
+    padding: 6px 10px;
+    font-size: 0.78rem;
+  }
+  .auth-page--glass .auth-form-side {
+    padding-top: 56px;
+  }
+}
